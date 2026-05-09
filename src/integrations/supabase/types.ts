@@ -14,16 +14,229 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      call_logs: {
+        Row: {
+          called_at: string
+          created_at: string
+          duration_minutes: number | null
+          id: string
+          outcome: string | null
+          owner_id: string
+          prospect_id: string
+          summary: string | null
+        }
+        Insert: {
+          called_at?: string
+          created_at?: string
+          duration_minutes?: number | null
+          id?: string
+          outcome?: string | null
+          owner_id: string
+          prospect_id: string
+          summary?: string | null
+        }
+        Update: {
+          called_at?: string
+          created_at?: string
+          duration_minutes?: number | null
+          id?: string
+          outcome?: string | null
+          owner_id?: string
+          prospect_id?: string
+          summary?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_logs_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "prospects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      follow_ups: {
+        Row: {
+          completed: boolean
+          created_at: string
+          id: string
+          owner_id: string
+          prospect_id: string
+          reason: string | null
+          scheduled_at: string
+        }
+        Insert: {
+          completed?: boolean
+          created_at?: string
+          id?: string
+          owner_id: string
+          prospect_id: string
+          reason?: string | null
+          scheduled_at: string
+        }
+        Update: {
+          completed?: boolean
+          created_at?: string
+          id?: string
+          owner_id?: string
+          prospect_id?: string
+          reason?: string | null
+          scheduled_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "follow_ups_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "prospects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string | null
+          full_name: string | null
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id?: string
+        }
+        Relationships: []
+      }
+      prospect_events: {
+        Row: {
+          created_at: string
+          event_type: string
+          id: string
+          owner_id: string
+          payload: Json | null
+          prospect_id: string
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          id?: string
+          owner_id: string
+          payload?: Json | null
+          prospect_id: string
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          id?: string
+          owner_id?: string
+          payload?: Json | null
+          prospect_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prospect_events_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "prospects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prospects: {
+        Row: {
+          company: string | null
+          created_at: string
+          email: string | null
+          first_name: string
+          id: string
+          last_name: string
+          notes: string | null
+          owner_id: string
+          phone: string | null
+          source: string | null
+          status: Database["public"]["Enums"]["prospect_status"]
+          updated_at: string
+        }
+        Insert: {
+          company?: string | null
+          created_at?: string
+          email?: string | null
+          first_name: string
+          id?: string
+          last_name: string
+          notes?: string | null
+          owner_id: string
+          phone?: string | null
+          source?: string | null
+          status?: Database["public"]["Enums"]["prospect_status"]
+          updated_at?: string
+        }
+        Update: {
+          company?: string | null
+          created_at?: string
+          email?: string | null
+          first_name?: string
+          id?: string
+          last_name?: string
+          notes?: string | null
+          owner_id?: string
+          phone?: string | null
+          source?: string | null
+          status?: Database["public"]["Enums"]["prospect_status"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "collaborator"
+      prospect_status:
+        | "nouveau"
+        | "en_cours"
+        | "interesse"
+        | "converti"
+        | "perdu"
+        | "a_relancer"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +363,16 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "collaborator"],
+      prospect_status: [
+        "nouveau",
+        "en_cours",
+        "interesse",
+        "converti",
+        "perdu",
+        "a_relancer",
+      ],
+    },
   },
 } as const
