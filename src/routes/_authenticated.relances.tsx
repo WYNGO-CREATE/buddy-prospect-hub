@@ -11,7 +11,7 @@ import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/relances")({
   component: RelancesPage,
-  head: () => ({ meta: [{ title: "Relances — CRM" }] }),
+  head: () => ({ meta: [{ title: "Relances — Wyngo Workspace" }] }),
 });
 
 function useFollowUps(filter: "upcoming" | "overdue" | "completed") {
