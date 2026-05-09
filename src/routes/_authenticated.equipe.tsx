@@ -12,7 +12,7 @@ export const Route = createFileRoute("/_authenticated/equipe")({
     if (!roles?.some((r) => r.role === "admin")) throw redirect({ to: "/" });
   },
   component: EquipePage,
-  head: () => ({ meta: [{ title: "Équipe — CRM" }] }),
+  head: () => ({ meta: [{ title: "Équipe — Wyngo Workspace" }] }),
 });
 
 function EquipePage() {

@@ -28,7 +28,7 @@ export function BrandLogo({
         <div className={cn("flex flex-col leading-none", wordmarkClassName)}>
           <span className="font-bold tracking-wide text-foreground">WYNGO</span>
           <span className="text-[10px] uppercase tracking-[0.2em] text-primary">
-            CRM
+            Workspace
           </span>
         </div>
       )}

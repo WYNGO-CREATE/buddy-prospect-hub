@@ -14,7 +14,7 @@ export const Route = createFileRoute("/signup")({
   component: SignupPage,
   head: () => ({
     meta: [
-      { title: "Inscription — CRM Interne" },
+      { title: "Inscription — Wyngo Workspace" },
       { name: "description", content: "Créez votre compte collaborateur" },
     ],
   }),
@@ -72,7 +72,7 @@ function SignupPage() {
           </div>
           <div className="text-center space-y-1">
             <CardTitle className="text-2xl">Créer un compte</CardTitle>
-            <CardDescription>Rejoignez votre équipe sur Wyngo CRM</CardDescription>
+            <CardDescription>Rejoignez votre équipe sur Wyngo Workspace</CardDescription>
           </div>
         </CardHeader>
         <CardContent>

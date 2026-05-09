@@ -11,7 +11,7 @@ import { fr } from "date-fns/locale";
 
 export const Route = createFileRoute("/_authenticated/")({
   component: DashboardPage,
-  head: () => ({ meta: [{ title: "Tableau de bord — CRM" }] }),
+  head: () => ({ meta: [{ title: "Tableau de bord — Wyngo Workspace" }] }),
 });
 
 function useStats(scope: "mine" | "all", userId?: string) {

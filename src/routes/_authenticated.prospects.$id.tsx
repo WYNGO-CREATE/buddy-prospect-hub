@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/prospects/$id")({
   component: ProspectDetail,
-  head: () => ({ meta: [{ title: "Fiche prospect — CRM" }] }),
+  head: () => ({ meta: [{ title: "Fiche prospect — Wyngo Workspace" }] }),
 });
 
 function ProspectDetail() {

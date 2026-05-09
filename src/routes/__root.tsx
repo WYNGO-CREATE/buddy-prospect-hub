@@ -74,10 +74,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Wyngo CRM" },
-      { name: "description", content: "Wyngo CRM — Plateforme interne pour gérer prospects, appels et relances" },
+      { title: "Wyngo Workspace" },
+      { name: "description", content: "Wyngo Workspace — Plateforme interne pour gérer prospects, appels et relances" },
       { name: "author", content: "Wyngo" },
-      { property: "og:title", content: "Wyngo CRM" },
+      { property: "og:title", content: "Wyngo Workspace" },
       { property: "og:description", content: "Gérez vos prospects, appels et relances en équipe" },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },

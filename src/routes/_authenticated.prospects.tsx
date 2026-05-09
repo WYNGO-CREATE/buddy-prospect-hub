@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/prospects")({
   component: ProspectsPage,
-  head: () => ({ meta: [{ title: "Prospects — CRM" }] }),
+  head: () => ({ meta: [{ title: "Prospects — Wyngo Workspace" }] }),
 });
 
 const prospectSchema = z.object({
