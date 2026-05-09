@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
+import { BrandLogo } from "@/components/brand-logo";
 
 export function AppSidebar() {
   const { role, user, signOut } = useAuth();
@@ -33,14 +34,16 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
-        <div className="px-2 py-1">
-          <h2 className="text-lg font-bold">CRM</h2>
-          <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
-          {role === "admin" && (
-            <span className="inline-block mt-1 text-[10px] px-2 py-0.5 rounded bg-primary/10 text-primary font-medium">
-              Admin
-            </span>
-          )}
+        <div className="px-2 py-2 space-y-2">
+          <BrandLogo size={32} wordmarkClassName="text-sidebar-foreground" />
+          <div>
+            <p className="text-xs text-sidebar-foreground/60 truncate">{user?.email}</p>
+            {role === "admin" && (
+              <span className="inline-block mt-1 text-[10px] px-2 py-0.5 rounded bg-primary/20 text-primary-foreground font-medium ring-1 ring-primary/40">
+                Admin
+              </span>
+            )}
+          </div>
         </div>
       </SidebarHeader>
       <SidebarContent>
