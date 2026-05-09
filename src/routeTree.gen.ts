@@ -13,7 +13,10 @@ import { Route as SignupRouteImport } from './routes/signup'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated.index'
+import { Route as AuthenticatedRelancesRouteImport } from './routes/_authenticated.relances'
 import { Route as AuthenticatedProspectsRouteImport } from './routes/_authenticated.prospects'
+import { Route as AuthenticatedEquipeRouteImport } from './routes/_authenticated.equipe'
+import { Route as AuthenticatedProspectsIdRouteImport } from './routes/_authenticated.prospects.$id'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -34,44 +37,86 @@ const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedRelancesRoute = AuthenticatedRelancesRouteImport.update({
+  id: '/relances',
+  path: '/relances',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedProspectsRoute = AuthenticatedProspectsRouteImport.update({
   id: '/prospects',
   path: '/prospects',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedEquipeRoute = AuthenticatedEquipeRouteImport.update({
+  id: '/equipe',
+  path: '/equipe',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedProspectsIdRoute =
+  AuthenticatedProspectsIdRouteImport.update({
+    id: '/$id',
+    path: '/$id',
+    getParentRoute: () => AuthenticatedProspectsRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
-  '/prospects': typeof AuthenticatedProspectsRoute
+  '/equipe': typeof AuthenticatedEquipeRoute
+  '/prospects': typeof AuthenticatedProspectsRouteWithChildren
+  '/relances': typeof AuthenticatedRelancesRoute
+  '/prospects/$id': typeof AuthenticatedProspectsIdRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
-  '/prospects': typeof AuthenticatedProspectsRoute
+  '/equipe': typeof AuthenticatedEquipeRoute
+  '/prospects': typeof AuthenticatedProspectsRouteWithChildren
+  '/relances': typeof AuthenticatedRelancesRoute
   '/': typeof AuthenticatedIndexRoute
+  '/prospects/$id': typeof AuthenticatedProspectsIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
-  '/_authenticated/prospects': typeof AuthenticatedProspectsRoute
+  '/_authenticated/equipe': typeof AuthenticatedEquipeRoute
+  '/_authenticated/prospects': typeof AuthenticatedProspectsRouteWithChildren
+  '/_authenticated/relances': typeof AuthenticatedRelancesRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/prospects/$id': typeof AuthenticatedProspectsIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/signup' | '/prospects'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/signup'
+    | '/equipe'
+    | '/prospects'
+    | '/relances'
+    | '/prospects/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/login' | '/signup' | '/prospects' | '/'
+  to:
+    | '/login'
+    | '/signup'
+    | '/equipe'
+    | '/prospects'
+    | '/relances'
+    | '/'
+    | '/prospects/$id'
   id:
     | '__root__'
     | '/_authenticated'
     | '/login'
     | '/signup'
+    | '/_authenticated/equipe'
     | '/_authenticated/prospects'
+    | '/_authenticated/relances'
     | '/_authenticated/'
+    | '/_authenticated/prospects/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -110,6 +155,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/relances': {
+      id: '/_authenticated/relances'
+      path: '/relances'
+      fullPath: '/relances'
+      preLoaderRoute: typeof AuthenticatedRelancesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/prospects': {
       id: '/_authenticated/prospects'
       path: '/prospects'
@@ -117,16 +169,48 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProspectsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/equipe': {
+      id: '/_authenticated/equipe'
+      path: '/equipe'
+      fullPath: '/equipe'
+      preLoaderRoute: typeof AuthenticatedEquipeRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/prospects/$id': {
+      id: '/_authenticated/prospects/$id'
+      path: '/$id'
+      fullPath: '/prospects/$id'
+      preLoaderRoute: typeof AuthenticatedProspectsIdRouteImport
+      parentRoute: typeof AuthenticatedProspectsRoute
+    }
   }
 }
 
+interface AuthenticatedProspectsRouteChildren {
+  AuthenticatedProspectsIdRoute: typeof AuthenticatedProspectsIdRoute
+}
+
+const AuthenticatedProspectsRouteChildren: AuthenticatedProspectsRouteChildren =
+  {
+    AuthenticatedProspectsIdRoute: AuthenticatedProspectsIdRoute,
+  }
+
+const AuthenticatedProspectsRouteWithChildren =
+  AuthenticatedProspectsRoute._addFileChildren(
+    AuthenticatedProspectsRouteChildren,
+  )
+
 interface AuthenticatedRouteChildren {
-  AuthenticatedProspectsRoute: typeof AuthenticatedProspectsRoute
+  AuthenticatedEquipeRoute: typeof AuthenticatedEquipeRoute
+  AuthenticatedProspectsRoute: typeof AuthenticatedProspectsRouteWithChildren
+  AuthenticatedRelancesRoute: typeof AuthenticatedRelancesRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
-  AuthenticatedProspectsRoute: AuthenticatedProspectsRoute,
+  AuthenticatedEquipeRoute: AuthenticatedEquipeRoute,
+  AuthenticatedProspectsRoute: AuthenticatedProspectsRouteWithChildren,
+  AuthenticatedRelancesRoute: AuthenticatedRelancesRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
 }
 
