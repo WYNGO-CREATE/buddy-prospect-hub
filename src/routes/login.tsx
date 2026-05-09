@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { BrandLogo } from "@/components/brand-logo";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/login")({
@@ -53,11 +54,16 @@ function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle className="text-2xl">Connexion</CardTitle>
-          <CardDescription>Accédez à votre espace CRM</CardDescription>
+    <div className="min-h-screen flex items-center justify-center px-4 bg-[radial-gradient(ellipse_at_top,_oklch(0.52_0.24_263/0.15),_transparent_60%),radial-gradient(ellipse_at_bottom,_oklch(0.16_0.02_265/0.08),_transparent_60%)] bg-muted/30">
+      <Card className="w-full max-w-md border-border/60 shadow-xl">
+        <CardHeader className="space-y-4">
+          <div className="flex justify-center">
+            <BrandLogo size={56} showWordmark={false} />
+          </div>
+          <div className="text-center space-y-1">
+            <CardTitle className="text-2xl">Connexion</CardTitle>
+            <CardDescription>Accédez à votre espace Wyngo CRM</CardDescription>
+          </div>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
