@@ -23,6 +23,7 @@ export function AppSidebar() {
     path === "/" ? currentPath === "/" : currentPath.startsWith(path);
 
   const items = [
+    { title: "Tableau de bord", url: "/tableau", icon: LayoutDashboard },
     { title: "Prospects", url: "/prospects", icon: Users },
     { title: "Relances", url: "/relances", icon: CalendarClock },
   ];
