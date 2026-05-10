@@ -1,1 +1,4 @@
 project_id = "bowqsutfwtutlhfkdiij"
+
+[functions.invite-collaborator]
+verify_jwt = true
