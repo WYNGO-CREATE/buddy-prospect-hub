@@ -72,13 +72,19 @@ function ProspectsPage() {
     },
   });
 
+  async function checkDuplicates(payload: any): Promise<DuplicateMatch[]> {
+    const { data, error } = await supabase.rpc("find_prospect_duplicates", {
+      _email: payload.email,
+      _phone: payload.phone,
+      _website: payload.website,
+      _exclude_id: null,
+    });
+    if (error) throw error;
+    return (data as DuplicateMatch[]) || [];
+  }
+
   const create = useMutation({
-    mutationFn: async (form: FormData) => {
-      const raw = Object.fromEntries(form.entries());
-      const parsed = prospectSchema.safeParse(raw);
-      if (!parsed.success) throw new Error(parsed.error.issues[0].message);
-      const payload: any = { ...parsed.data, owner_id: user!.id };
-      Object.keys(payload).forEach((k) => payload[k] === "" && (payload[k] = null));
+    mutationFn: async (payload: any) => {
       const { error } = await supabase.from("prospects").insert(payload);
       if (error) throw error;
     },
@@ -86,9 +92,34 @@ function ProspectsPage() {
       toast.success("Prospect ajouté");
       qc.invalidateQueries({ queryKey: ["prospects"] });
       setOpen(false);
+      setPendingPayload(null);
+      setDuplicates([]);
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const raw = Object.fromEntries(new FormData(e.currentTarget).entries());
+    const parsed = prospectSchema.safeParse(raw);
+    if (!parsed.success) { toast.error(parsed.error.issues[0].message); return; }
+    const payload: any = { ...parsed.data, owner_id: user!.id };
+    Object.keys(payload).forEach((k) => payload[k] === "" && (payload[k] = null));
+    setChecking(true);
+    try {
+      const dups = await checkDuplicates(payload);
+      setChecking(false);
+      if (dups.length > 0) {
+        setPendingPayload(payload);
+        setDuplicates(dups);
+        return;
+      }
+      create.mutate(payload);
+    } catch (err: any) {
+      setChecking(false);
+      toast.error(err.message || "Erreur de vérification");
+    }
+  }
 
   const updateStatus = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: ProspectStatus }) => {
