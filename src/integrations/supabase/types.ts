@@ -99,20 +99,58 @@ export type Database = {
           email: string | null
           full_name: string | null
           id: string
+          is_active: boolean
         }
         Insert: {
           created_at?: string
           email?: string | null
           full_name?: string | null
           id: string
+          is_active?: boolean
         }
         Update: {
           created_at?: string
           email?: string | null
           full_name?: string | null
           id?: string
+          is_active?: boolean
         }
         Relationships: []
+      }
+      prospect_comments: {
+        Row: {
+          author_id: string
+          body: string
+          created_at: string
+          id: string
+          prospect_id: string
+          updated_at: string
+        }
+        Insert: {
+          author_id: string
+          body: string
+          created_at?: string
+          id?: string
+          prospect_id: string
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string
+          body?: string
+          created_at?: string
+          id?: string
+          prospect_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prospect_comments_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "prospects"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       prospect_events: {
         Row: {
@@ -157,11 +195,14 @@ export type Database = {
           first_name: string
           id: string
           last_name: string
+          next_action: string | null
+          next_action_at: string | null
           notes: string | null
           owner_id: string
           phone: string | null
           source: string | null
           status: Database["public"]["Enums"]["prospect_status"]
+          tags: string[]
           updated_at: string
           website: string | null
         }
@@ -172,11 +213,14 @@ export type Database = {
           first_name: string
           id?: string
           last_name: string
+          next_action?: string | null
+          next_action_at?: string | null
           notes?: string | null
           owner_id: string
           phone?: string | null
           source?: string | null
           status?: Database["public"]["Enums"]["prospect_status"]
+          tags?: string[]
           updated_at?: string
           website?: string | null
         }
@@ -187,11 +231,14 @@ export type Database = {
           first_name?: string
           id?: string
           last_name?: string
+          next_action?: string | null
+          next_action_at?: string | null
           notes?: string | null
           owner_id?: string
           phone?: string | null
           source?: string | null
           status?: Database["public"]["Enums"]["prospect_status"]
+          tags?: string[]
           updated_at?: string
           website?: string | null
         }
@@ -252,6 +299,28 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      leaderboard_month: {
+        Args: never
+        Returns: {
+          calls_count: number
+          converted_count: number
+          owner_id: string
+          owner_name: string
+          prospects_count: number
+        }[]
+      }
+      search_prospects: {
+        Args: { _limit?: number; _q: string }
+        Returns: {
+          company: string
+          email: string
+          first_name: string
+          id: string
+          last_name: string
+          phone: string
+          website: string
+        }[]
       }
     }
     Enums: {
