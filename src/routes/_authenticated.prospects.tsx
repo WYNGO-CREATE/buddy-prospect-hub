@@ -77,7 +77,7 @@ function ProspectsPage() {
       _email: payload.email,
       _phone: payload.phone,
       _website: payload.website,
-      _exclude_id: null,
+      _exclude_id: undefined as any,
     });
     if (error) throw error;
     return (data as DuplicateMatch[]) || [];
