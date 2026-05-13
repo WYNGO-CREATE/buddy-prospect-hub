@@ -5,8 +5,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Users, PhoneCall, Star, Trophy, CalendarClock } from "lucide-react";
-import { format } from "date-fns";
+import { Users, PhoneCall, Star, Trophy, CalendarClock, Activity, Medal } from "lucide-react";
+import { format, formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 
 export const Route = createFileRoute("/_authenticated/tableau")({
@@ -112,6 +112,114 @@ function StatsView({ scope, userId }: { scope: "mine" | "all"; userId?: string }
   );
 }
 
+function Leaderboard() {
+  const { data, isLoading } = useQuery({
+    queryKey: ["leaderboard"],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("leaderboard_month");
+      if (error) throw error;
+      return data as any[];
+    },
+  });
+  const medals = ["🥇", "🥈", "🥉"];
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Medal className="h-5 w-5 text-amber-500" /> Classement du mois
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <p className="text-muted-foreground text-sm">Chargement…</p>
+        ) : !data || data.length === 0 ? (
+          <p className="text-muted-foreground text-sm">Aucun collaborateur.</p>
+        ) : (
+          <ul className="divide-y">
+            {data.map((row: any, i: number) => (
+              <li key={row.owner_id} className="py-2 flex items-center gap-3">
+                <span className="w-8 text-center text-lg">{medals[i] || `${i + 1}.`}</span>
+                <div className="flex-1">
+                  <div className="font-medium">{row.owner_name}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {row.calls_count} appel(s) · {row.prospects_count} nouveau(x) prospect(s)
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-2xl font-bold text-emerald-600">{row.converted_count}</div>
+                  <div className="text-[10px] text-muted-foreground uppercase">convertis</div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function RecentActivity() {
+  const { data, isLoading } = useQuery({
+    queryKey: ["recent-activity"],
+    queryFn: async () => {
+      const [{ data: events }, { data: profiles }] = await Promise.all([
+        supabase.from("prospect_events")
+          .select("id, event_type, created_at, owner_id, prospect_id, payload, prospects(first_name, last_name)")
+          .order("created_at", { ascending: false })
+          .limit(15),
+        supabase.from("profiles").select("id, full_name, email"),
+      ]);
+      const map = new Map<string, string>();
+      (profiles || []).forEach((p) => map.set(p.id, p.full_name || p.email || "—"));
+      return { events: events || [], names: map };
+    },
+  });
+
+  const labels: Record<string, string> = {
+    created: "a créé",
+    status_changed: "a changé le statut de",
+    call_logged: "a appelé",
+    follow_up_scheduled: "a programmé une relance pour",
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Activity className="h-5 w-5" /> Activité récente de l'équipe
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <p className="text-muted-foreground text-sm">Chargement…</p>
+        ) : data && data.events.length > 0 ? (
+          <ul className="space-y-3">
+            {data.events.map((e: any) => (
+              <li key={e.id} className="flex gap-3 text-sm">
+                <div className="w-2 h-2 rounded-full bg-primary mt-2 shrink-0" />
+                <div className="flex-1">
+                  <p>
+                    <span className="font-medium">{data.names.get(e.owner_id) || "—"}</span>{" "}
+                    <span className="text-muted-foreground">{labels[e.event_type] || e.event_type}</span>{" "}
+                    <Link to="/prospects/$id" params={{ id: e.prospect_id }} className="font-medium hover:underline">
+                      {e.prospects?.first_name} {e.prospects?.last_name}
+                    </Link>
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatDistanceToNow(new Date(e.created_at), { addSuffix: true, locale: fr })}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-muted-foreground text-sm">Aucune activité récente.</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function DashboardPage() {
   const { user, role } = useAuth();
   const [tab, setTab] = useState("mine");
@@ -132,12 +240,19 @@ function DashboardPage() {
           <TabsContent value="mine" className="mt-6">
             <StatsView scope="mine" userId={user?.id} />
           </TabsContent>
-          <TabsContent value="all" className="mt-6">
+          <TabsContent value="all" className="mt-6 space-y-6">
             <StatsView scope="all" />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Leaderboard />
+              <RecentActivity />
+            </div>
           </TabsContent>
         </Tabs>
       ) : (
-        <StatsView scope="mine" userId={user?.id} />
+        <div className="space-y-6">
+          <StatsView scope="mine" userId={user?.id} />
+          <Leaderboard />
+        </div>
       )}
     </div>
   );

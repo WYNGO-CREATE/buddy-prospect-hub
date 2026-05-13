@@ -1,5 +1,5 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UserPlus, Copy, Check } from "lucide-react";
@@ -62,10 +63,7 @@ function InviteDialog({ onInvited }: { onInvited: () => void }) {
   }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(o) => { setOpen(o); if (!o) reset(); }}
-    >
+    <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); }}>
       <DialogTrigger asChild>
         <Button><UserPlus className="h-4 w-4 mr-2" /> Inviter un collaborateur</Button>
       </DialogTrigger>
@@ -129,11 +127,12 @@ function InviteDialog({ onInvited }: { onInvited: () => void }) {
 }
 
 function EquipePage() {
+  const qc = useQueryClient();
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["team-stats"],
     queryFn: async () => {
       const [{ data: profiles }, { data: prospects }, { data: calls }] = await Promise.all([
-        supabase.from("profiles").select("id, full_name, email, created_at"),
+        supabase.from("profiles").select("id, full_name, email, created_at, is_active"),
         supabase.from("prospects").select("owner_id, status"),
         supabase.from("call_logs").select("owner_id"),
       ]);
@@ -148,6 +147,18 @@ function EquipePage() {
         };
       });
     },
+  });
+
+  const toggleActive = useMutation({
+    mutationFn: async ({ id, active }: { id: string; active: boolean }) => {
+      const { error } = await supabase.from("profiles").update({ is_active: active }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["team-stats"] });
+      toast.success(vars.active ? "Collaborateur réactivé" : "Collaborateur désactivé");
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   return (
@@ -173,19 +184,31 @@ function EquipePage() {
                   <TableHead className="text-right">Appels</TableHead>
                   <TableHead className="text-right">Intéressés</TableHead>
                   <TableHead className="text-right">Convertis</TableHead>
+                  <TableHead className="text-right">Actif</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {(data || []).map((p) => (
-                  <TableRow key={p.id}>
+                  <TableRow key={p.id} className={p.is_active === false ? "opacity-50" : ""}>
                     <TableCell>
-                      <div className="font-medium">{p.full_name || p.email}</div>
+                      <div className="font-medium">
+                        {p.full_name || p.email}
+                        {p.is_active === false && (
+                          <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">Désactivé</span>
+                        )}
+                      </div>
                       <div className="text-xs text-muted-foreground">{p.email}</div>
                     </TableCell>
                     <TableCell className="text-right">{p.total}</TableCell>
                     <TableCell className="text-right">{p.calls}</TableCell>
                     <TableCell className="text-right">{p.interested}</TableCell>
                     <TableCell className="text-right font-semibold text-emerald-600">{p.converted}</TableCell>
+                    <TableCell className="text-right">
+                      <Switch
+                        checked={p.is_active !== false}
+                        onCheckedChange={(checked) => toggleActive.mutate({ id: p.id, active: checked })}
+                      />
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -193,6 +216,9 @@ function EquipePage() {
           )}
         </CardContent>
       </Card>
+      <p className="text-xs text-muted-foreground">
+        Désactiver un collaborateur le déconnecte et l'empêche de se reconnecter, sans supprimer ses données.
+      </p>
     </div>
   );
 }
