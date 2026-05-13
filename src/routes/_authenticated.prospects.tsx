@@ -12,10 +12,24 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, AlertTriangle } from "lucide-react";
 import { PROSPECT_STATUSES, STATUS_LABELS, STATUS_VARIANTS, type ProspectStatus } from "@/lib/crm";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+
+type DuplicateMatch = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  company: string | null;
+  email: string | null;
+  phone: string | null;
+  website: string | null;
+  owner_name: string | null;
+  match_email: boolean;
+  match_phone: boolean;
+  match_website: boolean;
+};
 
 export const Route = createFileRoute("/_authenticated/prospects")({
   component: ProspectsPage,
@@ -28,6 +42,7 @@ const prospectSchema = z.object({
   company: z.string().trim().max(120).optional().or(z.literal("")),
   email: z.string().trim().email("Email invalide").max(255).optional().or(z.literal("")),
   phone: z.string().trim().max(40).optional().or(z.literal("")),
+  website: z.string().trim().max(255).optional().or(z.literal("")),
   source: z.string().trim().max(80).optional().or(z.literal("")),
   notes: z.string().trim().max(2000).optional().or(z.literal("")),
 });
@@ -38,6 +53,9 @@ function ProspectsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [open, setOpen] = useState(false);
+  const [duplicates, setDuplicates] = useState<DuplicateMatch[]>([]);
+  const [pendingPayload, setPendingPayload] = useState<any | null>(null);
+  const [checking, setChecking] = useState(false);
 
   const { data: prospects, isLoading } = useQuery({
     queryKey: ["prospects", search, statusFilter],
@@ -54,13 +72,19 @@ function ProspectsPage() {
     },
   });
 
+  async function checkDuplicates(payload: any): Promise<DuplicateMatch[]> {
+    const { data, error } = await supabase.rpc("find_prospect_duplicates", {
+      _email: payload.email,
+      _phone: payload.phone,
+      _website: payload.website,
+      _exclude_id: undefined as any,
+    });
+    if (error) throw error;
+    return (data as DuplicateMatch[]) || [];
+  }
+
   const create = useMutation({
-    mutationFn: async (form: FormData) => {
-      const raw = Object.fromEntries(form.entries());
-      const parsed = prospectSchema.safeParse(raw);
-      if (!parsed.success) throw new Error(parsed.error.issues[0].message);
-      const payload: any = { ...parsed.data, owner_id: user!.id };
-      Object.keys(payload).forEach((k) => payload[k] === "" && (payload[k] = null));
+    mutationFn: async (payload: any) => {
       const { error } = await supabase.from("prospects").insert(payload);
       if (error) throw error;
     },
@@ -68,9 +92,34 @@ function ProspectsPage() {
       toast.success("Prospect ajouté");
       qc.invalidateQueries({ queryKey: ["prospects"] });
       setOpen(false);
+      setPendingPayload(null);
+      setDuplicates([]);
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const raw = Object.fromEntries(new FormData(e.currentTarget).entries());
+    const parsed = prospectSchema.safeParse(raw);
+    if (!parsed.success) { toast.error(parsed.error.issues[0].message); return; }
+    const payload: any = { ...parsed.data, owner_id: user!.id };
+    Object.keys(payload).forEach((k) => payload[k] === "" && (payload[k] = null));
+    setChecking(true);
+    try {
+      const dups = await checkDuplicates(payload);
+      setChecking(false);
+      if (dups.length > 0) {
+        setPendingPayload(payload);
+        setDuplicates(dups);
+        return;
+      }
+      create.mutate(payload);
+    } catch (err: any) {
+      setChecking(false);
+      toast.error(err.message || "Erreur de vérification");
+    }
+  }
 
   const updateStatus = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: ProspectStatus }) => {
@@ -101,13 +150,7 @@ function ProspectsPage() {
             <DialogHeader>
               <DialogTitle>Nouveau prospect</DialogTitle>
             </DialogHeader>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                create.mutate(new FormData(e.currentTarget));
-              }}
-              className="space-y-3"
-            >
+            <form onSubmit={handleSubmit} className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2"><Label htmlFor="first_name">Prénom *</Label><Input id="first_name" name="first_name" required /></div>
                 <div className="space-y-2"><Label htmlFor="last_name">Nom *</Label><Input id="last_name" name="last_name" required /></div>
@@ -117,15 +160,54 @@ function ProspectsPage() {
                 <div className="space-y-2"><Label htmlFor="email">Email</Label><Input id="email" name="email" type="email" /></div>
                 <div className="space-y-2"><Label htmlFor="phone">Téléphone</Label><Input id="phone" name="phone" /></div>
               </div>
+              <div className="space-y-2"><Label htmlFor="website">Site web</Label><Input id="website" name="website" placeholder="exemple.com" /></div>
               <div className="space-y-2"><Label htmlFor="source">Source</Label><Input id="source" name="source" placeholder="LinkedIn, Salon…" /></div>
               <div className="space-y-2"><Label htmlFor="notes">Notes</Label><Textarea id="notes" name="notes" rows={3} /></div>
               <DialogFooter>
-                <Button type="submit" disabled={create.isPending}>{create.isPending ? "Ajout…" : "Ajouter"}</Button>
+                <Button type="submit" disabled={create.isPending || checking}>
+                  {checking ? "Vérification…" : create.isPending ? "Ajout…" : "Ajouter"}
+                </Button>
               </DialogFooter>
             </form>
           </DialogContent>
         </Dialog>
       </div>
+
+      <Dialog open={duplicates.length > 0} onOpenChange={(o) => { if (!o) { setDuplicates([]); setPendingPayload(null); } }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-600">
+              <AlertTriangle className="h-5 w-5" /> Prospect potentiellement déjà existant
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Un ou plusieurs prospects partagent un email, téléphone ou site web identique. Vérifiez avant d'ajouter pour éviter les doublons dans l'équipe.
+          </p>
+          <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+            {duplicates.map((d) => (
+              <div key={d.id} className="rounded-lg border p-3 text-sm space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <Link to="/prospects/$id" params={{ id: d.id }} className="font-medium hover:underline" onClick={() => { setDuplicates([]); setPendingPayload(null); setOpen(false); }}>
+                    {d.first_name} {d.last_name}{d.company ? ` — ${d.company}` : ""}
+                  </Link>
+                  <span className="text-xs text-muted-foreground">Géré par {d.owner_name || "?"}</span>
+                </div>
+                <div className="text-xs text-muted-foreground space-x-2">
+                  {d.email && <span className={d.match_email ? "text-amber-600 font-medium" : ""}>{d.email}</span>}
+                  {d.phone && <span className={d.match_phone ? "text-amber-600 font-medium" : ""}>· {d.phone}</span>}
+                  {d.website && <span className={d.match_website ? "text-amber-600 font-medium" : ""}>· {d.website}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setDuplicates([]); setPendingPayload(null); }}>Annuler</Button>
+            <Button onClick={() => pendingPayload && create.mutate(pendingPayload)} disabled={create.isPending}>
+              Ajouter quand même
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Card>
         <CardContent className="p-4 flex flex-wrap gap-3 items-center">
