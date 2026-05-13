@@ -42,6 +42,7 @@ const prospectSchema = z.object({
   company: z.string().trim().max(120).optional().or(z.literal("")),
   email: z.string().trim().email("Email invalide").max(255).optional().or(z.literal("")),
   phone: z.string().trim().max(40).optional().or(z.literal("")),
+  website: z.string().trim().max(255).optional().or(z.literal("")),
   source: z.string().trim().max(80).optional().or(z.literal("")),
   notes: z.string().trim().max(2000).optional().or(z.literal("")),
 });
@@ -52,6 +53,9 @@ function ProspectsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [open, setOpen] = useState(false);
+  const [duplicates, setDuplicates] = useState<DuplicateMatch[]>([]);
+  const [pendingPayload, setPendingPayload] = useState<any | null>(null);
+  const [checking, setChecking] = useState(false);
 
   const { data: prospects, isLoading } = useQuery({
     queryKey: ["prospects", search, statusFilter],
