@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,8 +11,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { ArrowLeft, PhoneCall, CalendarClock, History, Check } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { ArrowLeft, PhoneCall, CalendarClock, History, Check, MessageSquare, Trash2, UserCog } from "lucide-react";
 import { PROSPECT_STATUSES, STATUS_LABELS, STATUS_VARIANTS, EVENT_LABELS, type ProspectStatus } from "@/lib/crm";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -26,9 +27,11 @@ export const Route = createFileRoute("/_authenticated/prospects/$id")({
 function ProspectDetail() {
   const { id } = Route.useParams();
   const qc = useQueryClient();
+  const { user, role } = useAuth();
   const [editing, setEditing] = useState(false);
   const [callOpen, setCallOpen] = useState(false);
   const [followOpen, setFollowOpen] = useState(false);
+  const [comment, setComment] = useState("");
 
   const { data: prospect, isLoading } = useQuery({
     queryKey: ["prospect", id],
@@ -37,6 +40,11 @@ function ProspectDetail() {
       if (error) throw error;
       return data;
     },
+  });
+
+  const { data: profiles } = useQuery({
+    queryKey: ["profiles-min"],
+    queryFn: async () => (await supabase.from("profiles").select("id, full_name, email")).data || [],
   });
 
   const { data: calls } = useQuery({
@@ -66,6 +74,15 @@ function ProspectDetail() {
     },
   });
 
+  const { data: comments } = useQuery({
+    queryKey: ["comments", id],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("prospect_comments").select("*").eq("prospect_id", id).order("created_at", { ascending: true });
+      if (error) throw error;
+      return data;
+    },
+  });
+
   const updateStatus = useMutation({
     mutationFn: async (status: ProspectStatus) => {
       const { error } = await supabase.from("prospects").update({ status }).eq("id", id);
@@ -78,6 +95,18 @@ function ProspectDetail() {
     },
   });
 
+  const reassign = useMutation({
+    mutationFn: async (newOwner: string) => {
+      const { error } = await supabase.from("prospects").update({ owner_id: newOwner }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["prospect", id] });
+      toast.success("Prospect réassigné");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const updateProspect = useMutation({
     mutationFn: async (form: FormData) => {
       const raw = Object.fromEntries(form.entries());
@@ -87,12 +116,21 @@ function ProspectDetail() {
         company: z.string().trim().max(120).optional().or(z.literal("")),
         email: z.string().trim().email().max(255).optional().or(z.literal("")),
         phone: z.string().trim().max(40).optional().or(z.literal("")),
+        website: z.string().trim().max(255).optional().or(z.literal("")),
         source: z.string().trim().max(80).optional().or(z.literal("")),
         notes: z.string().trim().max(2000).optional().or(z.literal("")),
+        tags: z.string().trim().max(500).optional().or(z.literal("")),
+        next_action: z.string().trim().max(255).optional().or(z.literal("")),
+        next_action_at: z.string().optional().or(z.literal("")),
       });
       const parsed = schema.safeParse(raw);
       if (!parsed.success) throw new Error(parsed.error.issues[0].message);
-      const payload: any = { ...parsed.data };
+      const tags = parsed.data.tags ? parsed.data.tags.split(",").map((t) => t.trim()).filter(Boolean) : [];
+      const payload: any = {
+        ...parsed.data,
+        tags,
+        next_action_at: parsed.data.next_action_at ? new Date(parsed.data.next_action_at).toISOString() : null,
+      };
       Object.keys(payload).forEach((k) => payload[k] === "" && (payload[k] = null));
       const { error } = await supabase.from("prospects").update(payload).eq("id", id);
       if (error) throw error;
@@ -108,7 +146,6 @@ function ProspectDetail() {
   const addCall = useMutation({
     mutationFn: async (form: FormData) => {
       const raw = Object.fromEntries(form.entries());
-      const { data: { user } } = await supabase.auth.getUser();
       const { error } = await supabase.from("call_logs").insert({
         prospect_id: id,
         owner_id: user!.id,
@@ -132,7 +169,6 @@ function ProspectDetail() {
     mutationFn: async (form: FormData) => {
       const raw = Object.fromEntries(form.entries());
       if (!raw.scheduled_at) throw new Error("Date requise");
-      const { data: { user } } = await supabase.auth.getUser();
       const { error } = await supabase.from("follow_ups").insert({
         prospect_id: id,
         owner_id: user!.id,
@@ -158,8 +194,41 @@ function ProspectDetail() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["followups", id] }),
   });
 
+  const addComment = useMutation({
+    mutationFn: async (body: string) => {
+      const trimmed = body.trim();
+      if (!trimmed) throw new Error("Commentaire vide");
+      if (trimmed.length > 4000) throw new Error("Commentaire trop long");
+      const { error } = await supabase.from("prospect_comments").insert({
+        prospect_id: id, author_id: user!.id, body: trimmed,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["comments", id] });
+      setComment("");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const deleteComment = useMutation({
+    mutationFn: async (cid: string) => {
+      const { error } = await supabase.from("prospect_comments").delete().eq("id", cid);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["comments", id] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   if (isLoading) return <p className="text-muted-foreground">Chargement…</p>;
   if (!prospect) return <p>Prospect introuvable.</p>;
+
+  const profileName = (uid: string) => {
+    const p = profiles?.find((x) => x.id === uid);
+    return p?.full_name || p?.email || uid.slice(0, 8);
+  };
+
+  const statusEvents = (events || []).filter((e) => e.event_type === "status_changed" || e.event_type === "created");
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -171,18 +240,34 @@ function ProspectDetail() {
           <div>
             <h1 className="text-2xl font-bold">{prospect.first_name} {prospect.last_name}</h1>
             {prospect.company && <p className="text-muted-foreground">{prospect.company}</p>}
+            <p className="text-xs text-muted-foreground mt-1">Géré par {profileName(prospect.owner_id)}</p>
           </div>
         </div>
-        <Select value={prospect.status} onValueChange={(v) => updateStatus.mutate(v as ProspectStatus)}>
-          <SelectTrigger className={cn("w-[160px] border", STATUS_VARIANTS[prospect.status as ProspectStatus])}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {PROSPECT_STATUSES.map((s) => (
-              <SelectItem key={s} value={s}>{STATUS_LABELS[s]}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex gap-2 items-center">
+          {role === "admin" && (
+            <Select value={prospect.owner_id} onValueChange={(v) => reassign.mutate(v)}>
+              <SelectTrigger className="w-[180px]">
+                <UserCog className="h-3.5 w-3.5 mr-1" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(profiles || []).map((p) => (
+                  <SelectItem key={p.id} value={p.id}>{p.full_name || p.email}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Select value={prospect.status} onValueChange={(v) => updateStatus.mutate(v as ProspectStatus)}>
+            <SelectTrigger className={cn("w-[160px] border", STATUS_VARIANTS[prospect.status as ProspectStatus])}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PROSPECT_STATUSES.map((s) => (
+                <SelectItem key={s} value={s}>{STATUS_LABELS[s]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <Card>
@@ -207,7 +292,23 @@ function ProspectDetail() {
                 <div className="space-y-2"><Label>Email</Label><Input name="email" type="email" defaultValue={prospect.email || ""} /></div>
                 <div className="space-y-2"><Label>Téléphone</Label><Input name="phone" defaultValue={prospect.phone || ""} /></div>
               </div>
+              <div className="space-y-2"><Label>Site web</Label><Input name="website" defaultValue={prospect.website || ""} /></div>
               <div className="space-y-2"><Label>Source</Label><Input name="source" defaultValue={prospect.source || ""} /></div>
+              <div className="space-y-2">
+                <Label>Étiquettes (séparées par virgule)</Label>
+                <Input name="tags" defaultValue={(prospect.tags || []).join(", ")} placeholder="VIP, Salon Paris…" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2"><Label>Prochaine action</Label><Input name="next_action" defaultValue={prospect.next_action || ""} /></div>
+                <div className="space-y-2">
+                  <Label>Date</Label>
+                  <Input
+                    name="next_action_at"
+                    type="datetime-local"
+                    defaultValue={prospect.next_action_at ? new Date(prospect.next_action_at).toISOString().slice(0, 16) : ""}
+                  />
+                </div>
+              </div>
               <div className="space-y-2"><Label>Notes</Label><Textarea name="notes" rows={3} defaultValue={prospect.notes || ""} /></div>
               <Button type="submit" disabled={updateProspect.isPending}>Enregistrer</Button>
             </form>
@@ -215,7 +316,27 @@ function ProspectDetail() {
             <dl className="grid grid-cols-2 gap-4 text-sm">
               <div><dt className="text-muted-foreground">Email</dt><dd>{prospect.email || "—"}</dd></div>
               <div><dt className="text-muted-foreground">Téléphone</dt><dd>{prospect.phone || "—"}</dd></div>
+              <div><dt className="text-muted-foreground">Site web</dt><dd>{prospect.website || "—"}</dd></div>
               <div><dt className="text-muted-foreground">Source</dt><dd>{prospect.source || "—"}</dd></div>
+              <div className="col-span-2">
+                <dt className="text-muted-foreground">Étiquettes</dt>
+                <dd className="flex flex-wrap gap-1 mt-1">
+                  {(prospect.tags || []).length === 0 ? "—" : (prospect.tags || []).map((t: string) => (
+                    <span key={t} className="text-xs px-2 py-0.5 rounded bg-primary/10 text-primary">{t}</span>
+                  ))}
+                </dd>
+              </div>
+              <div className="col-span-2">
+                <dt className="text-muted-foreground">Prochaine action</dt>
+                <dd>
+                  {prospect.next_action || "—"}
+                  {prospect.next_action_at && (
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      ({format(new Date(prospect.next_action_at), "PPp", { locale: fr })})
+                    </span>
+                  )}
+                </dd>
+              </div>
               <div><dt className="text-muted-foreground">Créé le</dt><dd>{format(new Date(prospect.created_at), "PP", { locale: fr })}</dd></div>
               <div className="col-span-2"><dt className="text-muted-foreground">Notes</dt><dd className="whitespace-pre-wrap">{prospect.notes || "—"}</dd></div>
             </dl>
@@ -223,12 +344,66 @@ function ProspectDetail() {
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="calls">
+      <Tabs defaultValue="comments">
         <TabsList>
+          <TabsTrigger value="comments"><MessageSquare className="h-4 w-4 mr-2" />Discussion</TabsTrigger>
           <TabsTrigger value="calls"><PhoneCall className="h-4 w-4 mr-2" />Appels</TabsTrigger>
           <TabsTrigger value="followups"><CalendarClock className="h-4 w-4 mr-2" />Relances</TabsTrigger>
           <TabsTrigger value="history"><History className="h-4 w-4 mr-2" />Historique</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="comments" className="mt-4">
+          <Card>
+            <CardHeader><CardTitle>Discussion interne équipe</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-3 max-h-[500px] overflow-y-auto">
+                {(!comments || comments.length === 0) ? (
+                  <p className="text-muted-foreground text-sm">Aucun commentaire pour le moment.</p>
+                ) : (
+                  comments.map((c) => {
+                    const mine = c.author_id === user?.id;
+                    return (
+                      <div key={c.id} className={cn("rounded-lg p-3 border", mine ? "bg-primary/5 border-primary/20" : "bg-muted/40")}>
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <span className="text-xs font-medium">{profileName(c.author_id)}</span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {format(new Date(c.created_at), "PPp", { locale: fr })}
+                          </span>
+                        </div>
+                        <p className="text-sm whitespace-pre-wrap">{c.body}</p>
+                        {(mine || role === "admin") && (
+                          <button
+                            onClick={() => deleteComment.mutate(c.id)}
+                            className="text-xs text-muted-foreground hover:text-destructive mt-2 inline-flex items-center gap-1"
+                          >
+                            <Trash2 className="h-3 w-3" /> Supprimer
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+              <form
+                onSubmit={(e) => { e.preventDefault(); addComment.mutate(comment); }}
+                className="space-y-2 border-t pt-3"
+              >
+                <Textarea
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  placeholder="Écrire un message à l'équipe…"
+                  rows={2}
+                  maxLength={4000}
+                />
+                <div className="flex justify-end">
+                  <Button type="submit" size="sm" disabled={addComment.isPending || !comment.trim()}>
+                    Envoyer
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="calls" className="mt-4">
           <Card>
@@ -237,7 +412,10 @@ function ProspectDetail() {
               <Dialog open={callOpen} onOpenChange={setCallOpen}>
                 <DialogTrigger asChild><Button size="sm">Ajouter</Button></DialogTrigger>
                 <DialogContent>
-                  <DialogHeader><DialogTitle>Nouvel appel</DialogTitle></DialogHeader>
+                  <DialogHeader>
+                    <DialogTitle>Nouvel appel</DialogTitle>
+                    <DialogDescription>Enregistrer un échange téléphonique</DialogDescription>
+                  </DialogHeader>
                   <form onSubmit={(e) => { e.preventDefault(); addCall.mutate(new FormData(e.currentTarget)); }} className="space-y-3">
                     <div className="space-y-2"><Label>Date & heure</Label><Input name="called_at" type="datetime-local" defaultValue={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)} /></div>
                     <div className="space-y-2"><Label>Durée (min)</Label><Input name="duration_minutes" type="number" min="0" /></div>
@@ -259,7 +437,10 @@ function ProspectDetail() {
                         <span className="font-medium">{c.outcome || "Appel"}</span>
                         <span className="text-muted-foreground">{format(new Date(c.called_at), "PPp", { locale: fr })}</span>
                       </div>
-                      {c.duration_minutes != null && <p className="text-xs text-muted-foreground">{c.duration_minutes} min</p>}
+                      <p className="text-xs text-muted-foreground">
+                        Par {profileName(c.owner_id)}
+                        {c.duration_minutes != null && ` · ${c.duration_minutes} min`}
+                      </p>
                       {c.summary && <p className="text-sm mt-1 whitespace-pre-wrap">{c.summary}</p>}
                     </li>
                   ))}
@@ -276,7 +457,10 @@ function ProspectDetail() {
               <Dialog open={followOpen} onOpenChange={setFollowOpen}>
                 <DialogTrigger asChild><Button size="sm">Programmer</Button></DialogTrigger>
                 <DialogContent>
-                  <DialogHeader><DialogTitle>Nouvelle relance</DialogTitle></DialogHeader>
+                  <DialogHeader>
+                    <DialogTitle>Nouvelle relance</DialogTitle>
+                    <DialogDescription>Programmer un rappel</DialogDescription>
+                  </DialogHeader>
                   <form onSubmit={(e) => { e.preventDefault(); addFollowUp.mutate(new FormData(e.currentTarget)); }} className="space-y-3">
                     <div className="space-y-2"><Label>Date & heure *</Label><Input name="scheduled_at" type="datetime-local" required /></div>
                     <div className="space-y-2"><Label>Motif</Label><Textarea name="reason" rows={2} /></div>
@@ -313,30 +497,51 @@ function ProspectDetail() {
 
         <TabsContent value="history" className="mt-4">
           <Card>
-            <CardHeader><CardTitle>Historique des échanges</CardTitle></CardHeader>
-            <CardContent>
-              {!events || events.length === 0 ? (
-                <p className="text-muted-foreground text-sm">Aucun événement.</p>
-              ) : (
-                <ul className="space-y-3">
-                  {events.map((e) => (
-                    <li key={e.id} className="flex gap-3 text-sm">
-                      <div className="w-2 h-2 rounded-full bg-primary mt-2 shrink-0" />
-                      <div className="flex-1">
-                        <div className="flex justify-between">
-                          <span className="font-medium">{EVENT_LABELS[e.event_type] || e.event_type}</span>
-                          <span className="text-muted-foreground text-xs">{format(new Date(e.created_at), "PPp", { locale: fr })}</span>
+            <CardHeader><CardTitle>Historique complet</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold mb-2">Évolution du statut</h3>
+                {statusEvents.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">—</p>
+                ) : (
+                  <ol className="border-l-2 border-primary/20 pl-4 space-y-3">
+                    {statusEvents.map((e) => (
+                      <li key={e.id} className="text-sm relative">
+                        <span className="absolute -left-[22px] top-1.5 h-3 w-3 rounded-full bg-primary" />
+                        <div className="font-medium">{formatPayload(e.event_type, e.payload as any)}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {format(new Date(e.created_at), "PPp", { locale: fr })} · {profileName(e.owner_id)}
                         </div>
-                        {e.payload && (
-                          <p className="text-muted-foreground text-xs mt-1">
-                            {formatPayload(e.event_type, e.payload as any)}
-                          </p>
-                        )}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold mb-2 mt-4">Tous les événements</h3>
+                {!events || events.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">Aucun événement.</p>
+                ) : (
+                  <ul className="space-y-3">
+                    {events.map((e) => (
+                      <li key={e.id} className="flex gap-3 text-sm">
+                        <div className="w-2 h-2 rounded-full bg-primary mt-2 shrink-0" />
+                        <div className="flex-1">
+                          <div className="flex justify-between">
+                            <span className="font-medium">{EVENT_LABELS[e.event_type] || e.event_type}</span>
+                            <span className="text-muted-foreground text-xs">{format(new Date(e.created_at), "PPp", { locale: fr })}</span>
+                          </div>
+                          {e.payload && (
+                            <p className="text-muted-foreground text-xs mt-1">
+                              {formatPayload(e.event_type, e.payload as any)}
+                            </p>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

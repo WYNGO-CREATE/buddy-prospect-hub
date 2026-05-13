@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -10,12 +10,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Search, AlertTriangle } from "lucide-react";
+import { Plus, Search, AlertTriangle, Download, Upload } from "lucide-react";
 import { PROSPECT_STATUSES, STATUS_LABELS, STATUS_VARIANTS, type ProspectStatus } from "@/lib/crm";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { toCSV, downloadCSV, parseCSV } from "@/lib/csv";
+import { format } from "date-fns";
+import { fr } from "date-fns/locale";
 
 type DuplicateMatch = {
   id: string;
@@ -45,23 +48,43 @@ const prospectSchema = z.object({
   website: z.string().trim().max(255).optional().or(z.literal("")),
   source: z.string().trim().max(80).optional().or(z.literal("")),
   notes: z.string().trim().max(2000).optional().or(z.literal("")),
+  tags: z.string().trim().max(255).optional().or(z.literal("")),
+  next_action: z.string().trim().max(255).optional().or(z.literal("")),
+  next_action_at: z.string().optional().or(z.literal("")),
 });
 
 function ProspectsPage() {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [scope, setScope] = useState<"mine" | "team">("mine");
   const [open, setOpen] = useState(false);
   const [duplicates, setDuplicates] = useState<DuplicateMatch[]>([]);
   const [pendingPayload, setPendingPayload] = useState<any | null>(null);
   const [checking, setChecking] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+
+  const { data: profiles } = useQuery({
+    queryKey: ["profiles-min"],
+    queryFn: async () => {
+      const { data } = await supabase.from("profiles").select("id, full_name, email");
+      return data || [];
+    },
+  });
+  const profileMap = useMemo(() => {
+    const m = new Map<string, string>();
+    (profiles || []).forEach((p) => m.set(p.id, p.full_name || p.email || "—"));
+    return m;
+  }, [profiles]);
 
   const { data: prospects, isLoading } = useQuery({
-    queryKey: ["prospects", search, statusFilter],
+    queryKey: ["prospects", search, statusFilter, scope, user?.id, role],
     queryFn: async () => {
       let q = supabase.from("prospects").select("*").order("created_at", { ascending: false });
       if (statusFilter !== "all") q = q.eq("status", statusFilter as ProspectStatus);
+      if (role !== "admin" || scope === "mine") q = q.eq("owner_id", user!.id);
       if (search.trim()) {
         const s = `%${search.trim()}%`;
         q = q.or(`first_name.ilike.${s},last_name.ilike.${s},company.ilike.${s},email.ilike.${s}`);
@@ -98,13 +121,26 @@ function ProspectsPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  function buildPayload(parsed: z.infer<typeof prospectSchema>) {
+    const tags = parsed.tags
+      ? parsed.tags.split(",").map((t) => t.trim()).filter(Boolean)
+      : [];
+    const payload: any = {
+      ...parsed,
+      tags,
+      next_action_at: parsed.next_action_at ? new Date(parsed.next_action_at).toISOString() : null,
+      owner_id: user!.id,
+    };
+    Object.keys(payload).forEach((k) => payload[k] === "" && (payload[k] = null));
+    return payload;
+  }
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const raw = Object.fromEntries(new FormData(e.currentTarget).entries());
     const parsed = prospectSchema.safeParse(raw);
     if (!parsed.success) { toast.error(parsed.error.issues[0].message); return; }
-    const payload: any = { ...parsed.data, owner_id: user!.id };
-    Object.keys(payload).forEach((k) => payload[k] === "" && (payload[k] = null));
+    const payload = buildPayload(parsed.data);
     setChecking(true);
     try {
       const dups = await checkDuplicates(payload);
@@ -133,6 +169,82 @@ function ProspectsPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  function exportCSV() {
+    if (!prospects || prospects.length === 0) { toast.error("Rien à exporter"); return; }
+    const rows = prospects.map((p) => ({
+      prenom: p.first_name,
+      nom: p.last_name,
+      societe: p.company || "",
+      email: p.email || "",
+      telephone: p.phone || "",
+      site_web: p.website || "",
+      statut: STATUS_LABELS[p.status as ProspectStatus] || p.status,
+      tags: (p.tags || []).join(", "),
+      prochaine_action: p.next_action || "",
+      date_action: p.next_action_at ? format(new Date(p.next_action_at), "yyyy-MM-dd HH:mm") : "",
+      proprietaire: profileMap.get(p.owner_id) || "",
+      cree_le: format(new Date(p.created_at), "yyyy-MM-dd"),
+    }));
+    const headers = Object.keys(rows[0]);
+    downloadCSV(`prospects-${format(new Date(), "yyyyMMdd")}.csv`, toCSV(rows, headers));
+  }
+
+  async function handleImport(file: File) {
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const rows = parseCSV(text);
+      if (rows.length === 0) { toast.error("CSV vide"); return; }
+      const headerMap: Record<string, string> = {
+        prenom: "first_name", "prénom": "first_name", first_name: "first_name", firstname: "first_name",
+        nom: "last_name", last_name: "last_name", lastname: "last_name",
+        societe: "company", "société": "company", company: "company", entreprise: "company",
+        email: "email", "e-mail": "email", mail: "email",
+        telephone: "phone", "téléphone": "phone", phone: "phone", tel: "phone",
+        site_web: "website", site: "website", website: "website", "site web": "website", url: "website",
+        source: "source",
+        notes: "notes", note: "notes",
+        tags: "tags", "étiquettes": "tags", etiquettes: "tags",
+      };
+      const payloads: any[] = [];
+      const errors: string[] = [];
+      for (const [i, row] of rows.entries()) {
+        const mapped: any = {};
+        for (const k in row) {
+          const target = headerMap[k];
+          if (target) mapped[target] = row[k];
+        }
+        if (!mapped.first_name || !mapped.last_name) {
+          errors.push(`Ligne ${i + 2}: prénom et nom requis`);
+          continue;
+        }
+        const tags = mapped.tags ? String(mapped.tags).split(",").map((t: string) => t.trim()).filter(Boolean) : [];
+        payloads.push({
+          first_name: mapped.first_name,
+          last_name: mapped.last_name,
+          company: mapped.company || null,
+          email: mapped.email || null,
+          phone: mapped.phone || null,
+          website: mapped.website || null,
+          source: mapped.source || null,
+          notes: mapped.notes || null,
+          tags,
+          owner_id: user!.id,
+        });
+      }
+      if (payloads.length === 0) { toast.error(errors[0] || "Aucune ligne valide"); return; }
+      const { error } = await supabase.from("prospects").insert(payloads);
+      if (error) throw error;
+      toast.success(`${payloads.length} prospect(s) importé(s)${errors.length ? ` — ${errors.length} ignoré(s)` : ""}`);
+      qc.invalidateQueries({ queryKey: ["prospects"] });
+    } catch (e: any) {
+      toast.error(e.message || "Erreur d'import");
+    } finally {
+      setImporting(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       <div className="flex items-center justify-between flex-wrap gap-4">
@@ -140,37 +252,52 @@ function ProspectsPage() {
           <h1 className="text-3xl font-bold">Prospects</h1>
           <p className="text-muted-foreground">Gérez vos contacts et leur statut</p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" /> Nouveau prospect
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Nouveau prospect</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2"><Label htmlFor="first_name">Prénom *</Label><Input id="first_name" name="first_name" required /></div>
-                <div className="space-y-2"><Label htmlFor="last_name">Nom *</Label><Input id="last_name" name="last_name" required /></div>
-              </div>
-              <div className="space-y-2"><Label htmlFor="company">Société</Label><Input id="company" name="company" /></div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2"><Label htmlFor="email">Email</Label><Input id="email" name="email" type="email" /></div>
-                <div className="space-y-2"><Label htmlFor="phone">Téléphone</Label><Input id="phone" name="phone" /></div>
-              </div>
-              <div className="space-y-2"><Label htmlFor="website">Site web</Label><Input id="website" name="website" placeholder="exemple.com" /></div>
-              <div className="space-y-2"><Label htmlFor="source">Source</Label><Input id="source" name="source" placeholder="LinkedIn, Salon…" /></div>
-              <div className="space-y-2"><Label htmlFor="notes">Notes</Label><Textarea id="notes" name="notes" rows={3} /></div>
-              <DialogFooter>
-                <Button type="submit" disabled={create.isPending || checking}>
-                  {checking ? "Vérification…" : create.isPending ? "Ajout…" : "Ajouter"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+        <div className="flex gap-2 flex-wrap">
+          <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => e.target.files?.[0] && handleImport(e.target.files[0])} />
+          <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()} disabled={importing}>
+            <Upload className="h-4 w-4 mr-2" /> {importing ? "Import…" : "Importer CSV"}
+          </Button>
+          <Button variant="outline" size="sm" onClick={exportCSV}>
+            <Download className="h-4 w-4 mr-2" /> Exporter
+          </Button>
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="h-4 w-4 mr-2" /> Nouveau prospect
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Nouveau prospect</DialogTitle>
+                <DialogDescription>Créez un nouveau contact dans votre base</DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleSubmit} className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2"><Label htmlFor="first_name">Prénom *</Label><Input id="first_name" name="first_name" required /></div>
+                  <div className="space-y-2"><Label htmlFor="last_name">Nom *</Label><Input id="last_name" name="last_name" required /></div>
+                </div>
+                <div className="space-y-2"><Label htmlFor="company">Société</Label><Input id="company" name="company" /></div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2"><Label htmlFor="email">Email</Label><Input id="email" name="email" type="email" /></div>
+                  <div className="space-y-2"><Label htmlFor="phone">Téléphone</Label><Input id="phone" name="phone" /></div>
+                </div>
+                <div className="space-y-2"><Label htmlFor="website">Site web</Label><Input id="website" name="website" placeholder="exemple.com" /></div>
+                <div className="space-y-2"><Label htmlFor="source">Source</Label><Input id="source" name="source" placeholder="LinkedIn, Salon…" /></div>
+                <div className="space-y-2"><Label htmlFor="tags">Étiquettes (séparées par virgule)</Label><Input id="tags" name="tags" placeholder="VIP, Salon Paris 2026" /></div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2"><Label htmlFor="next_action">Prochaine action</Label><Input id="next_action" name="next_action" placeholder="Envoyer devis…" /></div>
+                  <div className="space-y-2"><Label htmlFor="next_action_at">Date</Label><Input id="next_action_at" name="next_action_at" type="datetime-local" /></div>
+                </div>
+                <div className="space-y-2"><Label htmlFor="notes">Notes</Label><Textarea id="notes" name="notes" rows={3} /></div>
+                <DialogFooter>
+                  <Button type="submit" disabled={create.isPending || checking}>
+                    {checking ? "Vérification…" : create.isPending ? "Ajout…" : "Ajouter"}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       <Dialog open={duplicates.length > 0} onOpenChange={(o) => { if (!o) { setDuplicates([]); setPendingPayload(null); } }}>
@@ -179,10 +306,10 @@ function ProspectsPage() {
             <DialogTitle className="flex items-center gap-2 text-amber-600">
               <AlertTriangle className="h-5 w-5" /> Prospect potentiellement déjà existant
             </DialogTitle>
+            <DialogDescription>
+              Un ou plusieurs prospects partagent un email, téléphone ou site web identique.
+            </DialogDescription>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            Un ou plusieurs prospects partagent un email, téléphone ou site web identique. Vérifiez avant d'ajouter pour éviter les doublons dans l'équipe.
-          </p>
           <div className="space-y-2 max-h-[50vh] overflow-y-auto">
             {duplicates.map((d) => (
               <div key={d.id} className="rounded-lg border p-3 text-sm space-y-1">
@@ -224,6 +351,15 @@ function ProspectsPage() {
               ))}
             </SelectContent>
           </Select>
+          {role === "admin" && (
+            <Select value={scope} onValueChange={(v) => setScope(v as any)}>
+              <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="mine">Mes prospects</SelectItem>
+                <SelectItem value="team">Équipe entière</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
         </CardContent>
       </Card>
 
@@ -237,24 +373,49 @@ function ProspectsPage() {
                 <TableRow>
                   <TableHead>Nom</TableHead>
                   <TableHead>Société</TableHead>
-                  <TableHead>Contact</TableHead>
+                  <TableHead>Étiquettes</TableHead>
+                  <TableHead>Prochaine action</TableHead>
+                  {role === "admin" && scope === "team" && <TableHead>Propriétaire</TableHead>}
                   <TableHead>Statut</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {prospects.map((p) => (
-                  <TableRow key={p.id} className="cursor-pointer">
+                  <TableRow key={p.id}>
                     <TableCell>
                       <Link to="/prospects/$id" params={{ id: p.id }} className="font-medium hover:underline">
                         {p.first_name} {p.last_name}
                       </Link>
+                      {(p.email || p.phone) && (
+                        <div className="text-xs text-muted-foreground">{p.email || p.phone}</div>
+                      )}
                     </TableCell>
                     <TableCell className="text-muted-foreground">{p.company || "—"}</TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {p.email && <div>{p.email}</div>}
-                      {p.phone && <div>{p.phone}</div>}
-                      {!p.email && !p.phone && "—"}
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {(p.tags || []).slice(0, 3).map((t: string) => (
+                          <span key={t} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">{t}</span>
+                        ))}
+                        {(p.tags || []).length > 3 && (
+                          <span className="text-[10px] text-muted-foreground">+{p.tags.length - 3}</span>
+                        )}
+                      </div>
                     </TableCell>
+                    <TableCell className="text-sm">
+                      {p.next_action ? (
+                        <div>
+                          <div>{p.next_action}</div>
+                          {p.next_action_at && (
+                            <div className="text-xs text-muted-foreground">
+                              {format(new Date(p.next_action_at), "PP", { locale: fr })}
+                            </div>
+                          )}
+                        </div>
+                      ) : "—"}
+                    </TableCell>
+                    {role === "admin" && scope === "team" && (
+                      <TableCell className="text-xs text-muted-foreground">{profileMap.get(p.owner_id) || "—"}</TableCell>
+                    )}
                     <TableCell>
                       <Select
                         value={p.status}
