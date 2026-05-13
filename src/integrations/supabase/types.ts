@@ -163,6 +163,7 @@ export type Database = {
           source: string | null
           status: Database["public"]["Enums"]["prospect_status"]
           updated_at: string
+          website: string | null
         }
         Insert: {
           company?: string | null
@@ -177,6 +178,7 @@ export type Database = {
           source?: string | null
           status?: Database["public"]["Enums"]["prospect_status"]
           updated_at?: string
+          website?: string | null
         }
         Update: {
           company?: string | null
@@ -191,6 +193,7 @@ export type Database = {
           source?: string | null
           status?: Database["public"]["Enums"]["prospect_status"]
           updated_at?: string
+          website?: string | null
         }
         Relationships: []
       }
@@ -220,6 +223,29 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      find_prospect_duplicates: {
+        Args: {
+          _email?: string
+          _exclude_id?: string
+          _phone?: string
+          _website?: string
+        }
+        Returns: {
+          company: string
+          email: string
+          first_name: string
+          id: string
+          last_name: string
+          match_email: boolean
+          match_phone: boolean
+          match_website: boolean
+          owner_id: string
+          owner_name: string
+          phone: string
+          status: Database["public"]["Enums"]["prospect_status"]
+          website: string
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
