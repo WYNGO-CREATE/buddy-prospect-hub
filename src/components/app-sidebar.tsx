@@ -1,4 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { LayoutDashboard, Users, CalendarClock, UserCog, LogOut } from "lucide-react";
 import {
   Sidebar,
@@ -15,6 +16,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/brand-logo";
+import { supabase } from "@/integrations/supabase/client";
 
 export function AppSidebar() {
   const { role, user, signOut } = useAuth();
@@ -22,13 +24,30 @@ export function AppSidebar() {
   const isActive = (path: string) =>
     path === "/" ? currentPath === "/" : currentPath.startsWith(path);
 
+  // Badge: relances dues aujourd'hui ou en retard, pour l'utilisateur courant
+  const { data: dueCount = 0 } = useQuery({
+    queryKey: ["due-followups", user?.id],
+    enabled: !!user,
+    refetchInterval: 60_000,
+    queryFn: async () => {
+      const end = new Date();
+      end.setHours(23, 59, 59, 999);
+      const { count } = await supabase
+        .from("follow_ups")
+        .select("*", { count: "exact", head: true })
+        .eq("completed", false)
+        .lte("scheduled_at", end.toISOString());
+      return count ?? 0;
+    },
+  });
+
   const items = [
-    { title: "Tableau de bord", url: "/tableau", icon: LayoutDashboard },
-    { title: "Prospects", url: "/prospects", icon: Users },
-    { title: "Relances", url: "/relances", icon: CalendarClock },
+    { title: "Tableau de bord", url: "/tableau", icon: LayoutDashboard, badge: 0 },
+    { title: "Prospects", url: "/prospects", icon: Users, badge: 0 },
+    { title: "Relances", url: "/relances", icon: CalendarClock, badge: dueCount },
   ];
   if (role === "admin") {
-    items.push({ title: "Équipe", url: "/equipe", icon: UserCog });
+    items.push({ title: "Équipe", url: "/equipe", icon: UserCog, badge: 0 });
   }
 
   return (
@@ -56,7 +75,12 @@ export function AppSidebar() {
                   <SidebarMenuButton asChild isActive={isActive(item.url)}>
                     <Link to={item.url} className="flex items-center gap-2">
                       <item.icon className="h-4 w-4" />
-                      <span>{item.title}</span>
+                      <span className="flex-1">{item.title}</span>
+                      {item.badge > 0 && (
+                        <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full bg-rose-500 text-white font-semibold min-w-[18px] text-center">
+                          {item.badge > 99 ? "99+" : item.badge}
+                        </span>
+                      )}
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
