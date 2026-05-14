@@ -16,6 +16,7 @@ import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated.
 import { Route as AuthenticatedTableauRouteImport } from './routes/_authenticated.tableau'
 import { Route as AuthenticatedRelancesRouteImport } from './routes/_authenticated.relances'
 import { Route as AuthenticatedProspectsRouteImport } from './routes/_authenticated.prospects'
+import { Route as AuthenticatedMailsRouteImport } from './routes/_authenticated.mails'
 import { Route as AuthenticatedEquipeRouteImport } from './routes/_authenticated.equipe'
 import { Route as AuthenticatedProspectsIdRouteImport } from './routes/_authenticated.prospects.$id'
 
@@ -53,6 +54,11 @@ const AuthenticatedProspectsRoute = AuthenticatedProspectsRouteImport.update({
   path: '/prospects',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedMailsRoute = AuthenticatedMailsRouteImport.update({
+  id: '/mails',
+  path: '/mails',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedEquipeRoute = AuthenticatedEquipeRouteImport.update({
   id: '/equipe',
   path: '/equipe',
@@ -70,6 +76,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/equipe': typeof AuthenticatedEquipeRoute
+  '/mails': typeof AuthenticatedMailsRoute
   '/prospects': typeof AuthenticatedProspectsRouteWithChildren
   '/relances': typeof AuthenticatedRelancesRoute
   '/tableau': typeof AuthenticatedTableauRoute
@@ -79,6 +86,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/equipe': typeof AuthenticatedEquipeRoute
+  '/mails': typeof AuthenticatedMailsRoute
   '/prospects': typeof AuthenticatedProspectsRouteWithChildren
   '/relances': typeof AuthenticatedRelancesRoute
   '/tableau': typeof AuthenticatedTableauRoute
@@ -91,6 +99,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/_authenticated/equipe': typeof AuthenticatedEquipeRoute
+  '/_authenticated/mails': typeof AuthenticatedMailsRoute
   '/_authenticated/prospects': typeof AuthenticatedProspectsRouteWithChildren
   '/_authenticated/relances': typeof AuthenticatedRelancesRoute
   '/_authenticated/tableau': typeof AuthenticatedTableauRoute
@@ -104,6 +113,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/equipe'
+    | '/mails'
     | '/prospects'
     | '/relances'
     | '/tableau'
@@ -113,6 +123,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/equipe'
+    | '/mails'
     | '/prospects'
     | '/relances'
     | '/tableau'
@@ -124,6 +135,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/_authenticated/equipe'
+    | '/_authenticated/mails'
     | '/_authenticated/prospects'
     | '/_authenticated/relances'
     | '/_authenticated/tableau'
@@ -188,6 +200,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProspectsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/mails': {
+      id: '/_authenticated/mails'
+      path: '/mails'
+      fullPath: '/mails'
+      preLoaderRoute: typeof AuthenticatedMailsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/equipe': {
       id: '/_authenticated/equipe'
       path: '/equipe'
@@ -221,6 +240,7 @@ const AuthenticatedProspectsRouteWithChildren =
 
 interface AuthenticatedRouteChildren {
   AuthenticatedEquipeRoute: typeof AuthenticatedEquipeRoute
+  AuthenticatedMailsRoute: typeof AuthenticatedMailsRoute
   AuthenticatedProspectsRoute: typeof AuthenticatedProspectsRouteWithChildren
   AuthenticatedRelancesRoute: typeof AuthenticatedRelancesRoute
   AuthenticatedTableauRoute: typeof AuthenticatedTableauRoute
@@ -229,6 +249,7 @@ interface AuthenticatedRouteChildren {
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedEquipeRoute: AuthenticatedEquipeRoute,
+  AuthenticatedMailsRoute: AuthenticatedMailsRoute,
   AuthenticatedProspectsRoute: AuthenticatedProspectsRouteWithChildren,
   AuthenticatedRelancesRoute: AuthenticatedRelancesRoute,
   AuthenticatedTableauRoute: AuthenticatedTableauRoute,

@@ -1,6 +1,6 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { LayoutDashboard, Users, CalendarClock, UserCog, LogOut } from "lucide-react";
+import { LayoutDashboard, Users, CalendarClock, UserCog, LogOut, Mail } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -45,6 +45,7 @@ export function AppSidebar() {
     { title: "Tableau de bord", url: "/tableau", icon: LayoutDashboard, badge: 0 },
     { title: "Prospects", url: "/prospects", icon: Users, badge: 0 },
     { title: "Relances", url: "/relances", icon: CalendarClock, badge: dueCount },
+    { title: "Modèles d'e-mails", url: "/mails", icon: Mail, badge: 0 },
   ];
   if (role === "admin") {
     items.push({ title: "Équipe", url: "/equipe", icon: UserCog, badge: 0 });
