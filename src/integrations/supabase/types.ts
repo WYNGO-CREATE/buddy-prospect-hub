@@ -14,6 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      agency_settings: {
+        Row: {
+          id: boolean
+          logo_url: string | null
+          name: string
+          updated_at: string
+          website_url: string | null
+        }
+        Insert: {
+          id?: boolean
+          logo_url?: string | null
+          name?: string
+          updated_at?: string
+          website_url?: string | null
+        }
+        Update: {
+          id?: boolean
+          logo_url?: string | null
+          name?: string
+          updated_at?: string
+          website_url?: string | null
+        }
+        Relationships: []
+      }
       call_logs: {
         Row: {
           called_at: string
@@ -100,6 +124,7 @@ export type Database = {
           full_name: string | null
           id: string
           is_active: boolean
+          phone: string | null
         }
         Insert: {
           created_at?: string
@@ -107,6 +132,7 @@ export type Database = {
           full_name?: string | null
           id: string
           is_active?: boolean
+          phone?: string | null
         }
         Update: {
           created_at?: string
@@ -114,6 +140,7 @@ export type Database = {
           full_name?: string | null
           id?: string
           is_active?: boolean
+          phone?: string | null
         }
         Relationships: []
       }
