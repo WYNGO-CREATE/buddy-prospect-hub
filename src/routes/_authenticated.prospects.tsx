@@ -100,6 +100,52 @@ function ProspectsPage() {
     },
   });
 
+  // Dernier contact + prochaine relance pour calculer la suggestion
+  const { data: lastContacts } = useQuery({
+    queryKey: ["last-contacts-list"],
+    queryFn: async () => {
+      const { data } = await supabase.rpc("prospects_last_contact");
+      return (data || []) as Array<{ prospect_id: string; last_contact_at: string }>;
+    },
+  });
+  const { data: nextFollowups } = useQuery({
+    queryKey: ["next-followups-list"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("follow_ups")
+        .select("prospect_id, scheduled_at")
+        .eq("completed", false)
+        .order("scheduled_at", { ascending: true });
+      return data || [];
+    },
+  });
+  const lastContactMap = useMemo(() => {
+    const m = new Map<string, string>();
+    (lastContacts || []).forEach((r) => m.set(r.prospect_id, r.last_contact_at));
+    return m;
+  }, [lastContacts]);
+  const nextFollowupMap = useMemo(() => {
+    const m = new Map<string, string>();
+    (nextFollowups || []).forEach((r: any) => { if (!m.has(r.prospect_id)) m.set(r.prospect_id, r.scheduled_at); });
+    return m;
+  }, [nextFollowups]);
+
+  // Vérification en direct des doublons (email / téléphone / site) — debounce 400ms
+  useEffect(() => {
+    if (!open) { setLiveDups([]); return; }
+    const e = liveEmail.trim();
+    const p = livePhone.trim();
+    const w = liveWebsite.trim();
+    if (e.length < 4 && p.length < 4 && w.length < 4) { setLiveDups([]); return; }
+    const t = setTimeout(async () => {
+      const { data } = await supabase.rpc("find_prospect_duplicates", {
+        _email: e || null, _phone: p || null, _website: w || null, _exclude_id: undefined as any,
+      });
+      setLiveDups((data as DuplicateMatch[]) || []);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [liveEmail, livePhone, liveWebsite, open]);
+
   async function checkDuplicates(payload: any): Promise<DuplicateMatch[]> {
     const { data, error } = await supabase.rpc("find_prospect_duplicates", {
       _email: payload.email,
