@@ -37,6 +37,10 @@ export const VAR_LABELS: Record<TemplateVar, string> = {
   daysRemaining: "Jours restants",
 };
 
+// URL publique stable du logo Wyngo — automatiquement inséré dans la version HTML des mails
+export const WYNGO_LOGO_URL =
+  "https://project--2ea09a11-8c70-4458-a32b-430a19c18823.lovable.app/wyngo-email-logo.png";
+
 const SIGNATURE = `
 
 Bien cordialement,
@@ -338,4 +342,31 @@ export function renderTemplate(
     const v = all[key];
     return v && v.length > 0 ? v : `{{${key}}}`;
   });
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/**
+ * Rend le corps du mail en HTML riche avec le logo Wyngo inséré automatiquement
+ * en bas de la signature. Quand on colle ça dans Gmail / Outlook / Apple Mail,
+ * le logo s'affiche réellement comme une image.
+ */
+export function renderTemplateHtml(
+  text: string,
+  vars: Record<string, string>,
+  signature: SignatureContext,
+): string {
+  const rendered = renderTemplate(text, vars, signature);
+  const html = escapeHtml(rendered).replace(/\n/g, "<br>");
+  return `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.55;color:#111;">
+${html}
+<br><br>
+<img src="${WYNGO_LOGO_URL}" alt="Wyngo" width="120" height="120" style="display:block;border-radius:12px;margin-top:8px;" />
+</div>`;
 }
