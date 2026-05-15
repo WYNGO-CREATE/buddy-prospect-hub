@@ -90,8 +90,8 @@ function LogsPage() {
 
   function describe(ev: any): string {
     if (ev.event_type === "status_changed") {
-      const from = STATUS_LABELS[ev.payload?.from] || ev.payload?.from;
-      const to = STATUS_LABELS[ev.payload?.to] || ev.payload?.to;
+      const from = (STATUS_LABELS as Record<string, string>)[ev.payload?.from] || ev.payload?.from;
+      const to = (STATUS_LABELS as Record<string, string>)[ev.payload?.to] || ev.payload?.to;
       return `${from} → ${to}`;
     }
     if (ev.event_type === "call_logged") {
