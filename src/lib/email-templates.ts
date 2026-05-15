@@ -37,6 +37,10 @@ export const VAR_LABELS: Record<TemplateVar, string> = {
   daysRemaining: "Jours restants",
 };
 
+// URL publique stable du logo Wyngo (servi depuis /public, accessible partout)
+export const WYNGO_LOGO_URL =
+  "https://project--2ea09a11-8c70-4458-a32b-430a19c18823.lovable.app/wyngo-email-logo.png";
+
 const SIGNATURE = `
 
 Bien cordialement,
@@ -44,7 +48,9 @@ Bien cordialement,
 {{senderName}}
 {{agencyName}}
 {{senderEmail}} · {{senderPhone}}
-{{agencyWebsite}}`;
+{{agencyWebsite}}
+
+[Logo Wyngo] ${WYNGO_LOGO_URL}`;
 
 export const EMAIL_TEMPLATES: EmailTemplate[] = [
   // ------- POST CALL (intéressé)
