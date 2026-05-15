@@ -20,6 +20,7 @@ import { Route as AuthenticatedProfilRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedPipelineRouteImport } from './routes/_authenticated.pipeline'
 import { Route as AuthenticatedMailsRouteImport } from './routes/_authenticated.mails'
 import { Route as AuthenticatedLogsRouteImport } from './routes/_authenticated.logs'
+import { Route as AuthenticatedFroidsRouteImport } from './routes/_authenticated.froids'
 import { Route as AuthenticatedEquipeRouteImport } from './routes/_authenticated.equipe'
 import { Route as AuthenticatedProspectsIdRouteImport } from './routes/_authenticated.prospects.$id'
 
@@ -77,6 +78,11 @@ const AuthenticatedLogsRoute = AuthenticatedLogsRouteImport.update({
   path: '/logs',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedFroidsRoute = AuthenticatedFroidsRouteImport.update({
+  id: '/froids',
+  path: '/froids',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedEquipeRoute = AuthenticatedEquipeRouteImport.update({
   id: '/equipe',
   path: '/equipe',
@@ -94,6 +100,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/equipe': typeof AuthenticatedEquipeRoute
+  '/froids': typeof AuthenticatedFroidsRoute
   '/logs': typeof AuthenticatedLogsRoute
   '/mails': typeof AuthenticatedMailsRoute
   '/pipeline': typeof AuthenticatedPipelineRoute
@@ -107,6 +114,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/equipe': typeof AuthenticatedEquipeRoute
+  '/froids': typeof AuthenticatedFroidsRoute
   '/logs': typeof AuthenticatedLogsRoute
   '/mails': typeof AuthenticatedMailsRoute
   '/pipeline': typeof AuthenticatedPipelineRoute
@@ -123,6 +131,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/_authenticated/equipe': typeof AuthenticatedEquipeRoute
+  '/_authenticated/froids': typeof AuthenticatedFroidsRoute
   '/_authenticated/logs': typeof AuthenticatedLogsRoute
   '/_authenticated/mails': typeof AuthenticatedMailsRoute
   '/_authenticated/pipeline': typeof AuthenticatedPipelineRoute
@@ -140,6 +149,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/equipe'
+    | '/froids'
     | '/logs'
     | '/mails'
     | '/pipeline'
@@ -153,6 +163,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/equipe'
+    | '/froids'
     | '/logs'
     | '/mails'
     | '/pipeline'
@@ -168,6 +179,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/_authenticated/equipe'
+    | '/_authenticated/froids'
     | '/_authenticated/logs'
     | '/_authenticated/mails'
     | '/_authenticated/pipeline'
@@ -264,6 +276,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedLogsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/froids': {
+      id: '/_authenticated/froids'
+      path: '/froids'
+      fullPath: '/froids'
+      preLoaderRoute: typeof AuthenticatedFroidsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/equipe': {
       id: '/_authenticated/equipe'
       path: '/equipe'
@@ -297,6 +316,7 @@ const AuthenticatedProspectsRouteWithChildren =
 
 interface AuthenticatedRouteChildren {
   AuthenticatedEquipeRoute: typeof AuthenticatedEquipeRoute
+  AuthenticatedFroidsRoute: typeof AuthenticatedFroidsRoute
   AuthenticatedLogsRoute: typeof AuthenticatedLogsRoute
   AuthenticatedMailsRoute: typeof AuthenticatedMailsRoute
   AuthenticatedPipelineRoute: typeof AuthenticatedPipelineRoute
@@ -309,6 +329,7 @@ interface AuthenticatedRouteChildren {
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedEquipeRoute: AuthenticatedEquipeRoute,
+  AuthenticatedFroidsRoute: AuthenticatedFroidsRoute,
   AuthenticatedLogsRoute: AuthenticatedLogsRoute,
   AuthenticatedMailsRoute: AuthenticatedMailsRoute,
   AuthenticatedPipelineRoute: AuthenticatedPipelineRoute,
@@ -331,3 +352,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
