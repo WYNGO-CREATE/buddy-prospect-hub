@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Search, AlertTriangle, Download, Upload } from "lucide-react";
-import { PROSPECT_STATUSES, STATUS_LABELS, STATUS_VARIANTS, type ProspectStatus } from "@/lib/crm";
+import { PROSPECT_STATUSES, STATUS_LABELS, STATUS_VARIANTS, SUGGESTION_TONE, suggestNextAction, type ProspectStatus } from "@/lib/crm";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { toCSV, downloadCSV, parseCSV } from "@/lib/csv";
@@ -65,6 +65,11 @@ function ProspectsPage() {
   const [checking, setChecking] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
+  // Vérification doublons en direct dans le formulaire
+  const [liveEmail, setLiveEmail] = useState("");
+  const [livePhone, setLivePhone] = useState("");
+  const [liveWebsite, setLiveWebsite] = useState("");
+  const [liveDups, setLiveDups] = useState<DuplicateMatch[]>([]);
 
   const { data: profiles } = useQuery({
     queryKey: ["profiles-min"],
@@ -94,6 +99,52 @@ function ProspectsPage() {
       return data;
     },
   });
+
+  // Dernier contact + prochaine relance pour calculer la suggestion
+  const { data: lastContacts } = useQuery({
+    queryKey: ["last-contacts-list"],
+    queryFn: async () => {
+      const { data } = await supabase.rpc("prospects_last_contact");
+      return (data || []) as Array<{ prospect_id: string; last_contact_at: string }>;
+    },
+  });
+  const { data: nextFollowups } = useQuery({
+    queryKey: ["next-followups-list"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("follow_ups")
+        .select("prospect_id, scheduled_at")
+        .eq("completed", false)
+        .order("scheduled_at", { ascending: true });
+      return data || [];
+    },
+  });
+  const lastContactMap = useMemo(() => {
+    const m = new Map<string, string>();
+    (lastContacts || []).forEach((r) => m.set(r.prospect_id, r.last_contact_at));
+    return m;
+  }, [lastContacts]);
+  const nextFollowupMap = useMemo(() => {
+    const m = new Map<string, string>();
+    (nextFollowups || []).forEach((r: any) => { if (!m.has(r.prospect_id)) m.set(r.prospect_id, r.scheduled_at); });
+    return m;
+  }, [nextFollowups]);
+
+  // Vérification en direct des doublons (email / téléphone / site) — debounce 400ms
+  useEffect(() => {
+    if (!open) { setLiveDups([]); return; }
+    const e = liveEmail.trim();
+    const p = livePhone.trim();
+    const w = liveWebsite.trim();
+    if (e.length < 4 && p.length < 4 && w.length < 4) { setLiveDups([]); return; }
+    const t = setTimeout(async () => {
+      const { data } = await supabase.rpc("find_prospect_duplicates", {
+        _email: e || undefined, _phone: p || undefined, _website: w || undefined, _exclude_id: undefined as any,
+      });
+      setLiveDups((data as DuplicateMatch[]) || []);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [liveEmail, livePhone, liveWebsite, open]);
 
   async function checkDuplicates(payload: any): Promise<DuplicateMatch[]> {
     const { data, error } = await supabase.rpc("find_prospect_duplicates", {

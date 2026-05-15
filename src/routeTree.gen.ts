@@ -16,7 +16,11 @@ import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated.
 import { Route as AuthenticatedTableauRouteImport } from './routes/_authenticated.tableau'
 import { Route as AuthenticatedRelancesRouteImport } from './routes/_authenticated.relances'
 import { Route as AuthenticatedProspectsRouteImport } from './routes/_authenticated.prospects'
+import { Route as AuthenticatedProfilRouteImport } from './routes/_authenticated.profil'
+import { Route as AuthenticatedPipelineRouteImport } from './routes/_authenticated.pipeline'
 import { Route as AuthenticatedMailsRouteImport } from './routes/_authenticated.mails'
+import { Route as AuthenticatedLogsRouteImport } from './routes/_authenticated.logs'
+import { Route as AuthenticatedFroidsRouteImport } from './routes/_authenticated.froids'
 import { Route as AuthenticatedEquipeRouteImport } from './routes/_authenticated.equipe'
 import { Route as AuthenticatedProspectsIdRouteImport } from './routes/_authenticated.prospects.$id'
 
@@ -54,9 +58,29 @@ const AuthenticatedProspectsRoute = AuthenticatedProspectsRouteImport.update({
   path: '/prospects',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedProfilRoute = AuthenticatedProfilRouteImport.update({
+  id: '/profil',
+  path: '/profil',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedPipelineRoute = AuthenticatedPipelineRouteImport.update({
+  id: '/pipeline',
+  path: '/pipeline',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedMailsRoute = AuthenticatedMailsRouteImport.update({
   id: '/mails',
   path: '/mails',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedLogsRoute = AuthenticatedLogsRouteImport.update({
+  id: '/logs',
+  path: '/logs',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedFroidsRoute = AuthenticatedFroidsRouteImport.update({
+  id: '/froids',
+  path: '/froids',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedEquipeRoute = AuthenticatedEquipeRouteImport.update({
@@ -76,7 +100,11 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/equipe': typeof AuthenticatedEquipeRoute
+  '/froids': typeof AuthenticatedFroidsRoute
+  '/logs': typeof AuthenticatedLogsRoute
   '/mails': typeof AuthenticatedMailsRoute
+  '/pipeline': typeof AuthenticatedPipelineRoute
+  '/profil': typeof AuthenticatedProfilRoute
   '/prospects': typeof AuthenticatedProspectsRouteWithChildren
   '/relances': typeof AuthenticatedRelancesRoute
   '/tableau': typeof AuthenticatedTableauRoute
@@ -86,7 +114,11 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/equipe': typeof AuthenticatedEquipeRoute
+  '/froids': typeof AuthenticatedFroidsRoute
+  '/logs': typeof AuthenticatedLogsRoute
   '/mails': typeof AuthenticatedMailsRoute
+  '/pipeline': typeof AuthenticatedPipelineRoute
+  '/profil': typeof AuthenticatedProfilRoute
   '/prospects': typeof AuthenticatedProspectsRouteWithChildren
   '/relances': typeof AuthenticatedRelancesRoute
   '/tableau': typeof AuthenticatedTableauRoute
@@ -99,7 +131,11 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/_authenticated/equipe': typeof AuthenticatedEquipeRoute
+  '/_authenticated/froids': typeof AuthenticatedFroidsRoute
+  '/_authenticated/logs': typeof AuthenticatedLogsRoute
   '/_authenticated/mails': typeof AuthenticatedMailsRoute
+  '/_authenticated/pipeline': typeof AuthenticatedPipelineRoute
+  '/_authenticated/profil': typeof AuthenticatedProfilRoute
   '/_authenticated/prospects': typeof AuthenticatedProspectsRouteWithChildren
   '/_authenticated/relances': typeof AuthenticatedRelancesRoute
   '/_authenticated/tableau': typeof AuthenticatedTableauRoute
@@ -113,7 +149,11 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/equipe'
+    | '/froids'
+    | '/logs'
     | '/mails'
+    | '/pipeline'
+    | '/profil'
     | '/prospects'
     | '/relances'
     | '/tableau'
@@ -123,7 +163,11 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/equipe'
+    | '/froids'
+    | '/logs'
     | '/mails'
+    | '/pipeline'
+    | '/profil'
     | '/prospects'
     | '/relances'
     | '/tableau'
@@ -135,7 +179,11 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/_authenticated/equipe'
+    | '/_authenticated/froids'
+    | '/_authenticated/logs'
     | '/_authenticated/mails'
+    | '/_authenticated/pipeline'
+    | '/_authenticated/profil'
     | '/_authenticated/prospects'
     | '/_authenticated/relances'
     | '/_authenticated/tableau'
@@ -200,11 +248,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProspectsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/profil': {
+      id: '/_authenticated/profil'
+      path: '/profil'
+      fullPath: '/profil'
+      preLoaderRoute: typeof AuthenticatedProfilRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/pipeline': {
+      id: '/_authenticated/pipeline'
+      path: '/pipeline'
+      fullPath: '/pipeline'
+      preLoaderRoute: typeof AuthenticatedPipelineRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/mails': {
       id: '/_authenticated/mails'
       path: '/mails'
       fullPath: '/mails'
       preLoaderRoute: typeof AuthenticatedMailsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/logs': {
+      id: '/_authenticated/logs'
+      path: '/logs'
+      fullPath: '/logs'
+      preLoaderRoute: typeof AuthenticatedLogsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/froids': {
+      id: '/_authenticated/froids'
+      path: '/froids'
+      fullPath: '/froids'
+      preLoaderRoute: typeof AuthenticatedFroidsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/equipe': {
@@ -240,7 +316,11 @@ const AuthenticatedProspectsRouteWithChildren =
 
 interface AuthenticatedRouteChildren {
   AuthenticatedEquipeRoute: typeof AuthenticatedEquipeRoute
+  AuthenticatedFroidsRoute: typeof AuthenticatedFroidsRoute
+  AuthenticatedLogsRoute: typeof AuthenticatedLogsRoute
   AuthenticatedMailsRoute: typeof AuthenticatedMailsRoute
+  AuthenticatedPipelineRoute: typeof AuthenticatedPipelineRoute
+  AuthenticatedProfilRoute: typeof AuthenticatedProfilRoute
   AuthenticatedProspectsRoute: typeof AuthenticatedProspectsRouteWithChildren
   AuthenticatedRelancesRoute: typeof AuthenticatedRelancesRoute
   AuthenticatedTableauRoute: typeof AuthenticatedTableauRoute
@@ -249,7 +329,11 @@ interface AuthenticatedRouteChildren {
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedEquipeRoute: AuthenticatedEquipeRoute,
+  AuthenticatedFroidsRoute: AuthenticatedFroidsRoute,
+  AuthenticatedLogsRoute: AuthenticatedLogsRoute,
   AuthenticatedMailsRoute: AuthenticatedMailsRoute,
+  AuthenticatedPipelineRoute: AuthenticatedPipelineRoute,
+  AuthenticatedProfilRoute: AuthenticatedProfilRoute,
   AuthenticatedProspectsRoute: AuthenticatedProspectsRouteWithChildren,
   AuthenticatedRelancesRoute: AuthenticatedRelancesRoute,
   AuthenticatedTableauRoute: AuthenticatedTableauRoute,
