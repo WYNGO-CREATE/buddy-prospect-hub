@@ -65,6 +65,11 @@ function ProspectsPage() {
   const [checking, setChecking] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
+  // Vérification doublons en direct dans le formulaire
+  const [liveEmail, setLiveEmail] = useState("");
+  const [livePhone, setLivePhone] = useState("");
+  const [liveWebsite, setLiveWebsite] = useState("");
+  const [liveDups, setLiveDups] = useState<DuplicateMatch[]>([]);
 
   const { data: profiles } = useQuery({
     queryKey: ["profiles-min"],
