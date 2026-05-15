@@ -14,6 +14,7 @@ import {
   TEMPLATE_CATEGORIES,
   VAR_LABELS,
   renderTemplate,
+  renderTemplateHtml,
   type EmailTemplate,
   type TemplateVar,
 } from "@/lib/email-templates";
