@@ -17,6 +17,7 @@ import { Route as AuthenticatedTableauRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedRelancesRouteImport } from './routes/_authenticated.relances'
 import { Route as AuthenticatedProspectsRouteImport } from './routes/_authenticated.prospects'
 import { Route as AuthenticatedProfilRouteImport } from './routes/_authenticated.profil'
+import { Route as AuthenticatedPipelineRouteImport } from './routes/_authenticated.pipeline'
 import { Route as AuthenticatedMailsRouteImport } from './routes/_authenticated.mails'
 import { Route as AuthenticatedEquipeRouteImport } from './routes/_authenticated.equipe'
 import { Route as AuthenticatedProspectsIdRouteImport } from './routes/_authenticated.prospects.$id'
@@ -60,6 +61,11 @@ const AuthenticatedProfilRoute = AuthenticatedProfilRouteImport.update({
   path: '/profil',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedPipelineRoute = AuthenticatedPipelineRouteImport.update({
+  id: '/pipeline',
+  path: '/pipeline',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedMailsRoute = AuthenticatedMailsRouteImport.update({
   id: '/mails',
   path: '/mails',
@@ -83,6 +89,7 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/equipe': typeof AuthenticatedEquipeRoute
   '/mails': typeof AuthenticatedMailsRoute
+  '/pipeline': typeof AuthenticatedPipelineRoute
   '/profil': typeof AuthenticatedProfilRoute
   '/prospects': typeof AuthenticatedProspectsRouteWithChildren
   '/relances': typeof AuthenticatedRelancesRoute
@@ -94,6 +101,7 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/equipe': typeof AuthenticatedEquipeRoute
   '/mails': typeof AuthenticatedMailsRoute
+  '/pipeline': typeof AuthenticatedPipelineRoute
   '/profil': typeof AuthenticatedProfilRoute
   '/prospects': typeof AuthenticatedProspectsRouteWithChildren
   '/relances': typeof AuthenticatedRelancesRoute
@@ -108,6 +116,7 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/_authenticated/equipe': typeof AuthenticatedEquipeRoute
   '/_authenticated/mails': typeof AuthenticatedMailsRoute
+  '/_authenticated/pipeline': typeof AuthenticatedPipelineRoute
   '/_authenticated/profil': typeof AuthenticatedProfilRoute
   '/_authenticated/prospects': typeof AuthenticatedProspectsRouteWithChildren
   '/_authenticated/relances': typeof AuthenticatedRelancesRoute
@@ -123,6 +132,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/equipe'
     | '/mails'
+    | '/pipeline'
     | '/profil'
     | '/prospects'
     | '/relances'
@@ -134,6 +144,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/equipe'
     | '/mails'
+    | '/pipeline'
     | '/profil'
     | '/prospects'
     | '/relances'
@@ -147,6 +158,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/_authenticated/equipe'
     | '/_authenticated/mails'
+    | '/_authenticated/pipeline'
     | '/_authenticated/profil'
     | '/_authenticated/prospects'
     | '/_authenticated/relances'
@@ -219,6 +231,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProfilRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/pipeline': {
+      id: '/_authenticated/pipeline'
+      path: '/pipeline'
+      fullPath: '/pipeline'
+      preLoaderRoute: typeof AuthenticatedPipelineRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/mails': {
       id: '/_authenticated/mails'
       path: '/mails'
@@ -260,6 +279,7 @@ const AuthenticatedProspectsRouteWithChildren =
 interface AuthenticatedRouteChildren {
   AuthenticatedEquipeRoute: typeof AuthenticatedEquipeRoute
   AuthenticatedMailsRoute: typeof AuthenticatedMailsRoute
+  AuthenticatedPipelineRoute: typeof AuthenticatedPipelineRoute
   AuthenticatedProfilRoute: typeof AuthenticatedProfilRoute
   AuthenticatedProspectsRoute: typeof AuthenticatedProspectsRouteWithChildren
   AuthenticatedRelancesRoute: typeof AuthenticatedRelancesRoute
@@ -270,6 +290,7 @@ interface AuthenticatedRouteChildren {
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedEquipeRoute: AuthenticatedEquipeRoute,
   AuthenticatedMailsRoute: AuthenticatedMailsRoute,
+  AuthenticatedPipelineRoute: AuthenticatedPipelineRoute,
   AuthenticatedProfilRoute: AuthenticatedProfilRoute,
   AuthenticatedProspectsRoute: AuthenticatedProspectsRouteWithChildren,
   AuthenticatedRelancesRoute: AuthenticatedRelancesRoute,
