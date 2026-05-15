@@ -337,6 +337,13 @@ export type Database = {
           prospects_count: number
         }[]
       }
+      prospects_last_contact: {
+        Args: never
+        Returns: {
+          last_contact_at: string
+          prospect_id: string
+        }[]
+      }
       search_prospects: {
         Args: { _limit?: number; _q: string }
         Returns: {
