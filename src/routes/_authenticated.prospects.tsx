@@ -139,7 +139,7 @@ function ProspectsPage() {
     if (e.length < 4 && p.length < 4 && w.length < 4) { setLiveDups([]); return; }
     const t = setTimeout(async () => {
       const { data } = await supabase.rpc("find_prospect_duplicates", {
-        _email: e || null, _phone: p || null, _website: w || null, _exclude_id: undefined as any,
+        _email: e || undefined, _phone: p || undefined, _website: w || undefined, _exclude_id: undefined as any,
       });
       setLiveDups((data as DuplicateMatch[]) || []);
     }, 400);
