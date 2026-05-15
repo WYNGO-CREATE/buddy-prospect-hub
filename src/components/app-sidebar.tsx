@@ -1,6 +1,17 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { LayoutDashboard, Users, CalendarClock, UserCog, LogOut, Mail } from "lucide-react";
+import {
+  LayoutDashboard,
+  Users,
+  CalendarClock,
+  UserCog,
+  LogOut,
+  Mail,
+  Kanban,
+  Snowflake,
+  Activity,
+  User,
+} from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -41,14 +52,41 @@ export function AppSidebar() {
     },
   });
 
-  const items = [
+  // Badge: prospects froids (>30j sans contact, hors converti/perdu)
+  const { data: coldCount = 0 } = useQuery({
+    queryKey: ["cold-count", user?.id],
+    enabled: !!user,
+    refetchInterval: 5 * 60_000,
+    queryFn: async () => {
+      const { data: lc } = await supabase.rpc("prospects_last_contact");
+      const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+      const coldIds = new Set(
+        ((lc || []) as Array<{ prospect_id: string; last_contact_at: string }>)
+          .filter((r) => new Date(r.last_contact_at).getTime() < cutoff)
+          .map((r) => r.prospect_id),
+      );
+      if (coldIds.size === 0) return 0;
+      const { data } = await supabase
+        .from("prospects")
+        .select("id, status")
+        .in("id", Array.from(coldIds))
+        .not("status", "in", "(converti,perdu)");
+      return (data || []).length;
+    },
+  });
+
+  const items: Array<{ title: string; url: string; icon: typeof Users; badge: number }> = [
     { title: "Tableau de bord", url: "/tableau", icon: LayoutDashboard, badge: 0 },
     { title: "Prospects", url: "/prospects", icon: Users, badge: 0 },
+    { title: "Pipeline", url: "/pipeline", icon: Kanban, badge: 0 },
     { title: "Relances", url: "/relances", icon: CalendarClock, badge: dueCount },
+    { title: "Prospects froids", url: "/froids", icon: Snowflake, badge: coldCount },
     { title: "Modèles d'e-mails", url: "/mails", icon: Mail, badge: 0 },
+    { title: "Mon profil", url: "/profil", icon: User, badge: 0 },
   ];
   if (role === "admin") {
     items.push({ title: "Équipe", url: "/equipe", icon: UserCog, badge: 0 });
+    items.push({ title: "Journal d'activité", url: "/logs", icon: Activity, badge: 0 });
   }
 
   return (
