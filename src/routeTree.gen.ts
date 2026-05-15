@@ -19,6 +19,7 @@ import { Route as AuthenticatedProspectsRouteImport } from './routes/_authentica
 import { Route as AuthenticatedProfilRouteImport } from './routes/_authenticated.profil'
 import { Route as AuthenticatedPipelineRouteImport } from './routes/_authenticated.pipeline'
 import { Route as AuthenticatedMailsRouteImport } from './routes/_authenticated.mails'
+import { Route as AuthenticatedLogsRouteImport } from './routes/_authenticated.logs'
 import { Route as AuthenticatedEquipeRouteImport } from './routes/_authenticated.equipe'
 import { Route as AuthenticatedProspectsIdRouteImport } from './routes/_authenticated.prospects.$id'
 
@@ -71,6 +72,11 @@ const AuthenticatedMailsRoute = AuthenticatedMailsRouteImport.update({
   path: '/mails',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedLogsRoute = AuthenticatedLogsRouteImport.update({
+  id: '/logs',
+  path: '/logs',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedEquipeRoute = AuthenticatedEquipeRouteImport.update({
   id: '/equipe',
   path: '/equipe',
@@ -88,6 +94,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/equipe': typeof AuthenticatedEquipeRoute
+  '/logs': typeof AuthenticatedLogsRoute
   '/mails': typeof AuthenticatedMailsRoute
   '/pipeline': typeof AuthenticatedPipelineRoute
   '/profil': typeof AuthenticatedProfilRoute
@@ -100,6 +107,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/equipe': typeof AuthenticatedEquipeRoute
+  '/logs': typeof AuthenticatedLogsRoute
   '/mails': typeof AuthenticatedMailsRoute
   '/pipeline': typeof AuthenticatedPipelineRoute
   '/profil': typeof AuthenticatedProfilRoute
@@ -115,6 +123,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/_authenticated/equipe': typeof AuthenticatedEquipeRoute
+  '/_authenticated/logs': typeof AuthenticatedLogsRoute
   '/_authenticated/mails': typeof AuthenticatedMailsRoute
   '/_authenticated/pipeline': typeof AuthenticatedPipelineRoute
   '/_authenticated/profil': typeof AuthenticatedProfilRoute
@@ -131,6 +140,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/equipe'
+    | '/logs'
     | '/mails'
     | '/pipeline'
     | '/profil'
@@ -143,6 +153,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/equipe'
+    | '/logs'
     | '/mails'
     | '/pipeline'
     | '/profil'
@@ -157,6 +168,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/_authenticated/equipe'
+    | '/_authenticated/logs'
     | '/_authenticated/mails'
     | '/_authenticated/pipeline'
     | '/_authenticated/profil'
@@ -245,6 +257,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedMailsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/logs': {
+      id: '/_authenticated/logs'
+      path: '/logs'
+      fullPath: '/logs'
+      preLoaderRoute: typeof AuthenticatedLogsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/equipe': {
       id: '/_authenticated/equipe'
       path: '/equipe'
@@ -278,6 +297,7 @@ const AuthenticatedProspectsRouteWithChildren =
 
 interface AuthenticatedRouteChildren {
   AuthenticatedEquipeRoute: typeof AuthenticatedEquipeRoute
+  AuthenticatedLogsRoute: typeof AuthenticatedLogsRoute
   AuthenticatedMailsRoute: typeof AuthenticatedMailsRoute
   AuthenticatedPipelineRoute: typeof AuthenticatedPipelineRoute
   AuthenticatedProfilRoute: typeof AuthenticatedProfilRoute
@@ -289,6 +309,7 @@ interface AuthenticatedRouteChildren {
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedEquipeRoute: AuthenticatedEquipeRoute,
+  AuthenticatedLogsRoute: AuthenticatedLogsRoute,
   AuthenticatedMailsRoute: AuthenticatedMailsRoute,
   AuthenticatedPipelineRoute: AuthenticatedPipelineRoute,
   AuthenticatedProfilRoute: AuthenticatedProfilRoute,
