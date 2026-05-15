@@ -343,6 +343,18 @@ function MailsPage() {
                         </Button>
                         <Button
                           size="sm"
+                          variant="secondary"
+                          onClick={copyHtml}
+                        >
+                          {copied === "html" ? (
+                            <Check className="h-3 w-3 mr-1" />
+                          ) : (
+                            <Copy className="h-3 w-3 mr-1" />
+                          )}
+                          Copier avec logo (HTML)
+                        </Button>
+                        <Button
+                          size="sm"
                           onClick={() =>
                             copy(`${renderedSubject}\n\n${renderedBody}`, "both")
                           }
