@@ -16,6 +16,7 @@ import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated.
 import { Route as AuthenticatedTableauRouteImport } from './routes/_authenticated.tableau'
 import { Route as AuthenticatedRelancesRouteImport } from './routes/_authenticated.relances'
 import { Route as AuthenticatedProspectsRouteImport } from './routes/_authenticated.prospects'
+import { Route as AuthenticatedProfilRouteImport } from './routes/_authenticated.profil'
 import { Route as AuthenticatedMailsRouteImport } from './routes/_authenticated.mails'
 import { Route as AuthenticatedEquipeRouteImport } from './routes/_authenticated.equipe'
 import { Route as AuthenticatedProspectsIdRouteImport } from './routes/_authenticated.prospects.$id'
@@ -54,6 +55,11 @@ const AuthenticatedProspectsRoute = AuthenticatedProspectsRouteImport.update({
   path: '/prospects',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedProfilRoute = AuthenticatedProfilRouteImport.update({
+  id: '/profil',
+  path: '/profil',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedMailsRoute = AuthenticatedMailsRouteImport.update({
   id: '/mails',
   path: '/mails',
@@ -77,6 +83,7 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/equipe': typeof AuthenticatedEquipeRoute
   '/mails': typeof AuthenticatedMailsRoute
+  '/profil': typeof AuthenticatedProfilRoute
   '/prospects': typeof AuthenticatedProspectsRouteWithChildren
   '/relances': typeof AuthenticatedRelancesRoute
   '/tableau': typeof AuthenticatedTableauRoute
@@ -87,6 +94,7 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/equipe': typeof AuthenticatedEquipeRoute
   '/mails': typeof AuthenticatedMailsRoute
+  '/profil': typeof AuthenticatedProfilRoute
   '/prospects': typeof AuthenticatedProspectsRouteWithChildren
   '/relances': typeof AuthenticatedRelancesRoute
   '/tableau': typeof AuthenticatedTableauRoute
@@ -100,6 +108,7 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/_authenticated/equipe': typeof AuthenticatedEquipeRoute
   '/_authenticated/mails': typeof AuthenticatedMailsRoute
+  '/_authenticated/profil': typeof AuthenticatedProfilRoute
   '/_authenticated/prospects': typeof AuthenticatedProspectsRouteWithChildren
   '/_authenticated/relances': typeof AuthenticatedRelancesRoute
   '/_authenticated/tableau': typeof AuthenticatedTableauRoute
@@ -114,6 +123,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/equipe'
     | '/mails'
+    | '/profil'
     | '/prospects'
     | '/relances'
     | '/tableau'
@@ -124,6 +134,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/equipe'
     | '/mails'
+    | '/profil'
     | '/prospects'
     | '/relances'
     | '/tableau'
@@ -136,6 +147,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/_authenticated/equipe'
     | '/_authenticated/mails'
+    | '/_authenticated/profil'
     | '/_authenticated/prospects'
     | '/_authenticated/relances'
     | '/_authenticated/tableau'
@@ -200,6 +212,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProspectsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/profil': {
+      id: '/_authenticated/profil'
+      path: '/profil'
+      fullPath: '/profil'
+      preLoaderRoute: typeof AuthenticatedProfilRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/mails': {
       id: '/_authenticated/mails'
       path: '/mails'
@@ -241,6 +260,7 @@ const AuthenticatedProspectsRouteWithChildren =
 interface AuthenticatedRouteChildren {
   AuthenticatedEquipeRoute: typeof AuthenticatedEquipeRoute
   AuthenticatedMailsRoute: typeof AuthenticatedMailsRoute
+  AuthenticatedProfilRoute: typeof AuthenticatedProfilRoute
   AuthenticatedProspectsRoute: typeof AuthenticatedProspectsRouteWithChildren
   AuthenticatedRelancesRoute: typeof AuthenticatedRelancesRoute
   AuthenticatedTableauRoute: typeof AuthenticatedTableauRoute
@@ -250,6 +270,7 @@ interface AuthenticatedRouteChildren {
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedEquipeRoute: AuthenticatedEquipeRoute,
   AuthenticatedMailsRoute: AuthenticatedMailsRoute,
+  AuthenticatedProfilRoute: AuthenticatedProfilRoute,
   AuthenticatedProspectsRoute: AuthenticatedProspectsRouteWithChildren,
   AuthenticatedRelancesRoute: AuthenticatedRelancesRoute,
   AuthenticatedTableauRoute: AuthenticatedTableauRoute,
@@ -268,3 +289,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
