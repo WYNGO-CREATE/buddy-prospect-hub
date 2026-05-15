@@ -126,13 +126,33 @@ function MailsPage() {
 
   const renderedSubject = renderTemplate(selected.subject, vars, signature);
   const renderedBody = renderTemplate(selected.body, vars, signature);
+  const renderedHtml = renderTemplateHtml(selected.body, vars, signature);
 
-  const [copied, setCopied] = useState<"subject" | "body" | "both" | null>(null);
-  const copy = async (text: string, key: "subject" | "body" | "both") => {
+  const [copied, setCopied] = useState<"subject" | "body" | "both" | "html" | null>(null);
+  const copy = async (text: string, key: "subject" | "body" | "both" | "html") => {
     try {
       await navigator.clipboard.writeText(text);
       setCopied(key);
       toast.success("Copié dans le presse-papier");
+      setTimeout(() => setCopied(null), 1500);
+    } catch {
+      toast.error("Impossible de copier");
+    }
+  };
+
+  const copyHtml = async () => {
+    try {
+      if (typeof ClipboardItem !== "undefined" && navigator.clipboard.write) {
+        const item = new ClipboardItem({
+          "text/html": new Blob([renderedHtml], { type: "text/html" }),
+          "text/plain": new Blob([renderedBody], { type: "text/plain" }),
+        });
+        await navigator.clipboard.write([item]);
+      } else {
+        await navigator.clipboard.writeText(renderedHtml);
+      }
+      setCopied("html");
+      toast.success("Mail HTML copié — le logo s'affichera dans Gmail / Outlook");
       setTimeout(() => setCopied(null), 1500);
     } catch {
       toast.error("Impossible de copier");
