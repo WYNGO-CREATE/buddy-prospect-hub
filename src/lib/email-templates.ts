@@ -343,3 +343,30 @@ export function renderTemplate(
     return v && v.length > 0 ? v : `{{${key}}}`;
   });
 }
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/**
+ * Rend le corps du mail en HTML riche avec le logo Wyngo inséré automatiquement
+ * en bas de la signature. Quand on colle ça dans Gmail / Outlook / Apple Mail,
+ * le logo s'affiche réellement comme une image.
+ */
+export function renderTemplateHtml(
+  text: string,
+  vars: Record<string, string>,
+  signature: SignatureContext,
+): string {
+  const rendered = renderTemplate(text, vars, signature);
+  const html = escapeHtml(rendered).replace(/\n/g, "<br>");
+  return `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.55;color:#111;">
+${html}
+<br><br>
+<img src="${WYNGO_LOGO_URL}" alt="Wyngo" width="120" height="120" style="display:block;border-radius:12px;margin-top:8px;" />
+</div>`;
+}
