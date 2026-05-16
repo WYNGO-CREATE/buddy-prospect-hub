@@ -443,12 +443,22 @@ function ProspectsPage() {
                   <TableHead>Société</TableHead>
                   <TableHead>Étiquettes</TableHead>
                   <TableHead>Prochaine action</TableHead>
+                  <TableHead>Suggestion</TableHead>
                   {role === "admin" && scope === "team" && <TableHead>Propriétaire</TableHead>}
                   <TableHead>Statut</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {prospects.map((p) => (
+                {prospects.map((p) => {
+                  const sugg = suggestNextAction({
+                    status: p.status as ProspectStatus,
+                    createdAt: p.created_at,
+                    lastContactAt: lastContactMap.get(p.id) || null,
+                    nextFollowupAt: nextFollowupMap.get(p.id) || null,
+                    nextActionLabel: p.next_action,
+                    nextActionAt: p.next_action_at,
+                  });
+                  return (
                   <TableRow key={p.id}>
                     <TableCell>
                       <Link to="/prospects/$id" params={{ id: p.id }} className="font-medium hover:underline">
@@ -481,6 +491,14 @@ function ProspectsPage() {
                         </div>
                       ) : "—"}
                     </TableCell>
+                    <TableCell>
+                      <span
+                        className={cn("text-xs px-2 py-1 rounded border inline-block whitespace-nowrap", SUGGESTION_TONE[sugg.tone])}
+                        title={sugg.reason}
+                      >
+                        {sugg.label}
+                      </span>
+                    </TableCell>
                     {role === "admin" && scope === "team" && (
                       <TableCell className="text-xs text-muted-foreground">{profileMap.get(p.owner_id) || "—"}</TableCell>
                     )}
@@ -500,7 +518,8 @@ function ProspectsPage() {
                       </Select>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           ) : (
