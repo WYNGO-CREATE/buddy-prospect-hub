@@ -57,24 +57,25 @@ export const EMAIL_TEMPLATES: EmailTemplate[] = [
     id: "post-call-interested",
     category: "post-call",
     title: "Récap après appel — prospect intéressé",
-    description: "À envoyer juste après un appel positif. Récapitule l'échange et pousse vers la conversion.",
-    subject: "Suite à notre échange — {{agencyName}} × {{company}}",
+    description: "À envoyer dans les heures qui suivent un échange positif. Cadre la suite et engage le prospect.",
+    subject: "Suite à notre échange du {{callDate}} — {{company}}",
     vars: ["company", "contactName", "projectUrl", "callDate"],
     body: `Bonjour {{contactName}},
 
-Merci pour le temps que vous m'avez accordé {{callDate}}. J'ai été ravi d'échanger avec vous au sujet de {{company}} et de mieux comprendre vos enjeux.
+Je vous remercie pour notre échange du {{callDate}} et pour la confiance que vous nous accordez en partageant le contexte de {{company}}.
 
-Pour récapituler ce que nous avons évoqué :
-• Vos objectifs : (à compléter)
-• Les points de friction actuels : (à compléter)
-• Ce que nous pouvons mettre en place : (à compléter)
+Afin de formaliser notre discussion, voici la synthèse des éléments retenus :
 
-Vous pouvez retrouver un aperçu de notre approche et quelques cas concrets ici :
-👉 {{projectUrl}}
+— Objectifs prioritaires : (à compléter)
+— Contraintes et points de vigilance : (à compléter)
+— Périmètre envisagé : (à compléter)
 
-La prochaine étape la plus simple serait de fixer un second rendez-vous de 30 minutes pour vous présenter une proposition personnalisée, sans engagement. Êtes-vous disponible cette semaine ou la suivante ?
+Vous trouverez ci-dessous un lien vers une présentation détaillée de notre approche et de réalisations comparables :
+{{projectUrl}}
 
-Je reste évidemment à votre disposition d'ici là pour toute question.${SIGNATURE}`,
+Comme convenu, je vous propose de planifier un second rendez-vous d'une trentaine de minutes afin de vous présenter une proposition d'accompagnement chiffrée et adaptée à vos enjeux. Pourriez-vous m'indiquer deux ou trois créneaux qui vous conviendraient sur les deux prochaines semaines ?
+
+Je reste à votre entière disposition pour toute information complémentaire d'ici là.${SIGNATURE}`,
   },
 
   // ------- NO ANSWER
@@ -82,243 +83,249 @@ Je reste évidemment à votre disposition d'ici là pour toute question.${SIGNAT
     id: "no-answer",
     category: "no-answer",
     title: "Premier contact — sans réponse au téléphone",
-    description: "Quand le prospect n'a pas décroché. Présente le projet et invite à reprendre contact.",
-    subject: "{{agencyName}} — un message rapide pour {{company}}",
+    description: "À envoyer après une tentative d'appel restée sans réponse. Présente l'agence et ouvre un canal écrit.",
+    subject: "Prise de contact — {{agencyName}} pour {{company}}",
     vars: ["company", "contactName", "projectUrl"],
     body: `Bonjour {{contactName}},
 
-Je me permets de vous écrire après avoir tenté de vous joindre par téléphone.
+N'ayant pu vous joindre par téléphone, je me permets de revenir vers vous par écrit.
 
-Je suis {{senderName}}, de {{agencyName}}. Nous accompagnons des entreprises comme {{company}} dans la création de leur site et de leur présence en ligne — site vitrine, site qui convertit, e-commerce ou plateforme sur-mesure — avec une obsession : que chaque euro investi génère du retour mesurable.
+Je suis {{senderName}}, de l'agence {{agencyName}}. Nous accompagnons des structures comparables à {{company}} dans la conception et la refonte de leur présence en ligne — sites vitrine, sites de conversion, plateformes e-commerce ou solutions sur-mesure — avec une exigence constante de retour sur investissement mesurable.
 
-Si je vous appelais, c'est parce que je pense sincèrement qu'on peut vous aider à (à compléter selon le contexte). Je vous laisse jeter un œil à notre approche ici :
-👉 {{projectUrl}}
+Si je souhaitais m'entretenir avec vous, c'est parce que nous identifions plusieurs leviers susceptibles de servir vos objectifs. Vous trouverez ici un aperçu de notre méthodologie et de nos références :
+{{projectUrl}}
 
-Le plus simple serait d'échanger 15 minutes par téléphone pour comprendre votre projet et voir si nous sommes les bons interlocuteurs. Vous pouvez répondre à ce mail avec un créneau qui vous arrange, ou me rappeler directement.
+Je vous propose un premier échange d'environ quinze minutes afin de comprendre votre projet et d'évaluer la pertinence d'une collaboration. N'hésitez pas à me communiquer un créneau qui vous arrange, ou à me rappeler directement.
 
-Au plaisir d'échanger.${SIGNATURE}`,
+Dans cette attente, je vous remercie par avance pour votre retour.${SIGNATURE}`,
   },
 
   // ------- THANKS — 4 formats
   {
     id: "thanks-vitrine",
     category: "thanks",
-    title: "Bienvenue client — Format Vitrine (990€)",
-    description: "Mail de remerciement pour un client qui vient de signer un site Vitrine.",
-    subject: "Bienvenue chez {{agencyName}}, {{contactName}} 🎉",
+    title: "Confirmation de collaboration — Format Vitrine (990 €)",
+    description: "Mail de confirmation officielle après signature d'un site Vitrine.",
+    subject: "Confirmation de votre commande — Site Vitrine {{company}}",
     vars: ["company", "contactName", "deliveryDate"],
     body: `Bonjour {{contactName}},
 
-Un immense merci pour votre confiance — toute l'équipe de {{agencyName}} est ravie de démarrer ce projet avec {{company}}.
+Nous accusons réception de votre commande et vous remercions sincèrement pour la confiance accordée à {{agencyName}} pour le projet de {{company}}.
 
-Voici ce que nous allons mettre en place pour vous (Format Vitrine) :
-• Un design sur-mesure (Figma + maquettes validées avec vous)
-• 3 à 5 pages, 100% responsive
-• L'hébergement et le nom de domaine pour 1 an
-• Une optimisation SEO de base pour exister sur Google
-• Un formulaire de contact intelligent
-• Notre garantie satisfaction 14 jours
+Pour rappel, votre prestation Site Vitrine comprend :
 
-📅 Mise en ligne prévue : {{deliveryDate}} (sous 10 jours).
+— Une identité visuelle sur-mesure (maquettes Figma soumises à validation)
+— De 3 à 5 pages, intégralement responsives
+— L'hébergement et le nom de domaine pour la première année
+— Une optimisation SEO technique de base
+— Un formulaire de contact relié à votre adresse professionnelle
+— Notre garantie satisfaction sur 14 jours
 
-Prochaine étape : je vais vous envoyer dans la foulée un court questionnaire pour cadrer vos contenus, votre charte et vos préférences visuelles. Plus vos retours seront précis, plus la première maquette tapera juste.
+Date de mise en ligne prévisionnelle : {{deliveryDate}} (délai contractuel de dix jours ouvrés).
 
-Si vous avez la moindre question d'ici là, répondez simplement à ce mail.
+Les prochaines étapes se déroulent comme suit :
+1. Vous recevrez d'ici 24 heures un questionnaire de cadrage portant sur vos contenus, votre charte graphique et vos préférences visuelles.
+2. Sur la base de vos réponses, nous vous transmettrons une première maquette sous cinq jours ouvrés.
+3. Deux cycles d'allers-retours sont prévus avant la validation finale et la mise en production.
 
-À très vite !${SIGNATURE}`,
+Pour toute question relative au projet, je demeure votre interlocuteur unique.${SIGNATURE}`,
   },
   {
     id: "thanks-conversion",
     category: "thanks",
-    title: "Bienvenue client — Format Conversion (2 490€)",
-    description: "Mail de remerciement pour un client qui vient de signer un site Conversion.",
-    subject: "Bienvenue chez {{agencyName}}, {{contactName}} 🎉",
+    title: "Confirmation de collaboration — Format Conversion (2 490 €)",
+    description: "Mail de confirmation officielle après signature d'un site Conversion.",
+    subject: "Confirmation de votre commande — Site Conversion {{company}}",
     vars: ["company", "contactName", "deliveryDate"],
     body: `Bonjour {{contactName}},
 
-Un grand merci pour votre confiance ! Toute l'équipe de {{agencyName}} est très enthousiaste à l'idée d'attaquer le projet de {{company}}.
+Nous vous remercions pour votre confiance et avons le plaisir de confirmer le lancement du projet de {{company}} dans le cadre de notre prestation Conversion.
 
-Vous avez choisi notre Format Conversion, et concrètement voici ce qu'on va construire ensemble :
-• Tout ce qui est inclus dans Vitrine Premium
-• Des pages stratégiques (services, cas clients, FAQ) pensées pour convertir
-• Du copywriting orienté action (chaque mot a une fonction)
-• La mise en place de Google Analytics + tracking d'évènements
-• Des Core Web Vitals optimisés (objectif PageSpeed 95+)
-• Notre garantie ROI : si les résultats ne sont pas au rendez-vous, on refait gratuitement
+Pour rappel, votre prestation comprend :
 
-📅 Livraison prévue : {{deliveryDate}} (sous 3 semaines).
+— L'ensemble des éléments inclus dans notre formule Vitrine Premium
+— La conception de pages stratégiques (services, cas clients, FAQ) pensées pour maximiser la conversion
+— Un copywriting orienté performance, rédigé par notre équipe
+— L'implémentation complète de Google Analytics 4 et du suivi d'événements
+— L'optimisation des Core Web Vitals (objectif PageSpeed mobile supérieur à 95)
+— Notre garantie de résultats : en l'absence d'amélioration mesurable, une refonte gratuite est engagée
 
-Prochaine étape : un atelier stratégique de cadrage pour définir précisément le tunnel de conversion, le ton, et les KPI à suivre. Je reviens vers vous dans les 48h pour caler une date.
+Date de livraison prévisionnelle : {{deliveryDate}} (délai contractuel de trois semaines).
 
-Hâte de démarrer !${SIGNATURE}`,
+Les prochaines étapes se déroulent comme suit :
+1. Un atelier stratégique de cadrage d'une heure trente, destiné à formaliser le tunnel de conversion, le positionnement éditorial et les indicateurs clés.
+2. Je reviendrai vers vous sous 48 heures avec trois propositions de créneaux pour cet atelier.
+3. À l'issue, nous vous adresserons un document de cadrage à valider avant ouverture du chantier de production.
+
+Je reste à votre disposition pour toute précision complémentaire.${SIGNATURE}`,
   },
   {
     id: "thanks-ecommerce",
     category: "thanks",
-    title: "Bienvenue client — Format E-commerce (3 990€)",
-    description: "Mail de remerciement pour un client qui vient de signer une boutique en ligne.",
-    subject: "Bienvenue chez {{agencyName}}, {{contactName}} 🎉",
+    title: "Confirmation de collaboration — Format E-commerce (3 990 €)",
+    description: "Mail de confirmation officielle après signature d'une boutique en ligne.",
+    subject: "Confirmation de votre commande — Boutique E-commerce {{company}}",
     vars: ["company", "contactName", "deliveryDate"],
     body: `Bonjour {{contactName}},
 
-Merci pour votre confiance — c'est un vrai plaisir de lancer la boutique de {{company}} avec vous.
+Nous vous remercions pour la confiance accordée à {{agencyName}} et confirmons par la présente le démarrage de la boutique en ligne de {{company}}.
 
-Voici ce qu'inclut votre Format E-commerce :
-• Un catalogue produits illimité
-• Le paiement Stripe / Apple Pay / Google Pay
-• La gestion complète des stocks, livraisons et factures
-• Les emails transactionnels automatiques (commande, expédition, etc.)
-• Un tableau de bord ventes en temps réel
-• Une formation incluse à la prise en main
+Pour rappel, votre prestation E-commerce comprend :
 
-📅 Mise en ligne prévue : {{deliveryDate}} (sous 4 semaines). Vous pourrez encaisser dès la première semaine de mise en ligne.
+— Un catalogue produits illimité, structuré et optimisé pour le référencement
+— L'intégration des moyens de paiement Stripe, Apple Pay et Google Pay
+— La gestion complète des stocks, des modes de livraison et de la facturation
+— L'envoi automatique des e-mails transactionnels (confirmation, expédition, suivi)
+— Un tableau de bord des ventes mis à jour en temps réel
+— Une session de formation à la prise en main de la plateforme
 
-Prochaines étapes :
-1. Je vous transmets un fichier type pour récupérer votre catalogue (titres, descriptions, prix, photos).
-2. On configure ensemble vos modes de livraison et vos taux de TVA.
-3. Maquette → validation → développement → formation.
+Date de mise en ligne prévisionnelle : {{deliveryDate}} (délai contractuel de quatre semaines).
 
-Si vous avez la moindre question sur l'une de ces étapes, je suis à votre disposition.
+Les prochaines étapes se déroulent comme suit :
+1. Transmission d'un fichier modèle pour la constitution de votre catalogue (intitulés, descriptions, prix, visuels).
+2. Configuration conjointe des modes de livraison, des taux de TVA et des conditions générales de vente.
+3. Conception graphique, validation, intégration technique, recette puis formation à la prise en main.
 
-À très vite !${SIGNATURE}`,
+Je demeure à votre disposition pour tout complément d'information.${SIGNATURE}`,
   },
   {
     id: "thanks-surmesure",
     category: "thanks",
-    title: "Bienvenue client — Format Sur-mesure (8 000€+)",
-    description: "Mail de remerciement pour un client signé sur une plateforme sur-mesure.",
-    subject: "Bienvenue chez {{agencyName}}, {{contactName}} 🎉",
+    title: "Confirmation de collaboration — Format Sur-mesure (8 000 € et plus)",
+    description: "Mail de confirmation officielle après signature d'une plateforme sur-mesure.",
+    subject: "Confirmation de votre commande — Plateforme sur-mesure {{company}}",
     vars: ["company", "contactName", "deliveryDate"],
     body: `Bonjour {{contactName}},
 
-Merci infiniment pour votre confiance. Les projets sur-mesure sont ceux qui nous animent le plus, et celui de {{company}} ne fait pas exception.
+Nous vous remercions très sincèrement pour la confiance accordée à {{agencyName}} et avons le plaisir de confirmer l'ouverture du projet sur-mesure de {{company}}.
 
-Voici ce que comprend votre prestation :
-• Un atelier stratégique de 2h offert pour cadrer la vision
-• L'architecture technique et les spécifications dédiées
-• Le développement back-end sur mesure
-• Les intégrations API tierces nécessaires (CRM, ERP, etc.)
-• 3 mois de maintenance évolutive incluse après mise en ligne
+Pour rappel, votre prestation comprend :
 
-📅 Première livraison prévue : {{deliveryDate}} (6 semaines minimum, planning détaillé à venir).
+— Un atelier stratégique initial de deux heures, offert, dédié au cadrage de la vision et du périmètre
+— L'élaboration de l'architecture technique et la rédaction des spécifications fonctionnelles
+— Le développement back-end et front-end conçu spécifiquement pour vos besoins
+— Les intégrations avec vos outils tiers (CRM, ERP, API métiers)
+— Trois mois de maintenance évolutive incluse à compter de la mise en production
 
-Prochaines étapes :
-1. Atelier stratégique de 2h pour aligner vision, périmètre et priorités (je vous propose 3 créneaux dans les jours qui viennent).
-2. Rédaction des spécifications fonctionnelles et techniques (sous 1 semaine après l'atelier).
-3. Validation conjointe → démarrage du développement.
+Première livraison prévisionnelle : {{deliveryDate}} (délai indicatif de six semaines, planning détaillé communiqué à l'issue de l'atelier).
 
-Vous aurez un point d'avancement hebdomadaire et un accès à un espace de suivi dédié.
+Les prochaines étapes se déroulent comme suit :
+1. Atelier stratégique de cadrage : vous recevrez sous 24 heures trois propositions de créneaux.
+2. Rédaction des spécifications fonctionnelles et techniques sous une semaine après l'atelier.
+3. Validation conjointe du document, puis ouverture du premier sprint de développement.
 
-Au plaisir de construire ce projet avec vous.${SIGNATURE}`,
+Vous bénéficierez d'un point d'avancement hebdomadaire ainsi que d'un espace de suivi dédié, accessible à l'ensemble de vos interlocuteurs.
+
+Je reste votre point de contact privilégié tout au long du projet.${SIGNATURE}`,
   },
 
   // ------- FOLLOW-UP — 4 formats
   {
     id: "followup-vitrine",
     category: "follow-up",
-    title: "Suivi projet — Format Vitrine",
-    description: "Point d'avancement à envoyer en cours de projet Vitrine. Personnaliser l'avancement.",
-    subject: "Avancement de votre site — {{company}}",
+    title: "Suivi de projet — Format Vitrine",
+    description: "Point d'avancement hebdomadaire en cours de projet Vitrine.",
+    subject: "Point d'avancement — Site Vitrine {{company}}",
     vars: ["company", "contactName", "nextStep", "daysRemaining"],
     body: `Bonjour {{contactName}},
 
-Petit point sur l'avancement du site de {{company}} :
+Veuillez trouver ci-dessous le point d'avancement hebdomadaire du site de {{company}}.
 
-✅ Ce qui est fait :
-• (à compléter — ex : maquette page d'accueil validée, choix du domaine)
+Éléments livrés :
+— (à compléter — exemple : maquette de la page d'accueil validée, configuration du nom de domaine)
 
-🔧 Ce sur quoi nous travaillons cette semaine :
-• (à compléter — ex : intégration des pages secondaires)
+Travaux en cours cette semaine :
+— (à compléter — exemple : intégration des pages secondaires, préparation des formulaires)
 
-⏭️ Prochaine étape : {{nextStep}}
+Prochaine étape : {{nextStep}}
 
-📅 Mise en ligne prévue dans {{daysRemaining}} jours, nous sommes dans les délais.
+Mise en ligne prévue dans {{daysRemaining}} jours. Le projet respecte à ce jour le calendrier contractuel.
 
-Si vous avez des retours, des contenus à ajuster ou des questions, c'est le bon moment pour me les envoyer.
+Vos éventuels retours sur les éléments en cours seraient appréciés d'ici la fin de la semaine afin de préserver le planning.
 
-Bonne journée,${SIGNATURE}`,
+Je reste à votre disposition pour tout complément.${SIGNATURE}`,
   },
   {
     id: "followup-conversion",
     category: "follow-up",
-    title: "Suivi projet — Format Conversion",
-    description: "Point d'avancement pour un projet Conversion. Insister sur les choix stratégiques.",
-    subject: "Avancement de votre site — {{company}}",
+    title: "Suivi de projet — Format Conversion",
+    description: "Point d'avancement hebdomadaire pour un projet Conversion.",
+    subject: "Point d'avancement — Site Conversion {{company}}",
     vars: ["company", "contactName", "nextStep", "daysRemaining"],
     body: `Bonjour {{contactName}},
 
-Voici où nous en sommes sur le projet de {{company}} :
+Veuillez trouver ci-dessous le point d'avancement hebdomadaire du projet de {{company}}.
 
-✅ Validé :
-• (à compléter — ex : architecture, copywriting des pages clés)
+Éléments validés :
+— (à compléter — exemple : architecture du site, copywriting des pages stratégiques)
 
-🔧 En cours cette semaine :
-• (à compléter — ex : intégration, tracking analytics, optimisation perf)
+Travaux en cours cette semaine :
+— (à compléter — exemple : intégration, mise en place du tracking analytics, optimisations performance)
 
-📊 Indicateurs visés à la mise en ligne :
-• PageSpeed mobile > 95
-• Tunnel de conversion mesuré bout en bout
+Indicateurs cibles à la mise en production :
+— Score PageSpeed mobile supérieur à 95
+— Tunnel de conversion mesurable de bout en bout
 
-⏭️ Prochaine étape : {{nextStep}}
-📅 Livraison prévue dans {{daysRemaining}} jours.
+Prochaine étape : {{nextStep}}
+Livraison prévue dans {{daysRemaining}} jours.
 
-Vos retours sur (à compléter) seraient les bienvenus avant la fin de la semaine pour rester dans le timing.
+Vos retours sur (à compléter) sont attendus avant la fin de la semaine afin de respecter le calendrier.
 
-À très vite,${SIGNATURE}`,
+Je reste à votre disposition pour toute clarification.${SIGNATURE}`,
   },
   {
     id: "followup-ecommerce",
     category: "follow-up",
-    title: "Suivi projet — Format E-commerce",
-    description: "Point d'avancement pour une boutique en ligne. Insister sur catalogue, paiement, logistique.",
-    subject: "Avancement de votre boutique — {{company}}",
+    title: "Suivi de projet — Format E-commerce",
+    description: "Point d'avancement hebdomadaire pour une boutique en ligne.",
+    subject: "Point d'avancement — Boutique {{company}}",
     vars: ["company", "contactName", "nextStep", "daysRemaining"],
     body: `Bonjour {{contactName}},
 
-Point hebdomadaire sur la boutique de {{company}} :
+Veuillez trouver ci-dessous le point d'avancement hebdomadaire de la boutique de {{company}}.
 
-✅ Ce qui est en place :
-• (à compléter — ex : catalogue importé, paiement Stripe configuré)
+Éléments en place :
+— (à compléter — exemple : catalogue importé, paiement Stripe opérationnel)
 
-🔧 En cours :
-• (à compléter — ex : configuration des transporteurs, emails transactionnels, tableau de bord)
+Travaux en cours :
+— (à compléter — exemple : configuration des transporteurs, e-mails transactionnels, tableau de bord)
 
-🧪 À tester ensemble :
-• (à compléter — ex : tunnel d'achat de bout en bout, encaissement réel)
+Points à tester conjointement :
+— (à compléter — exemple : tunnel d'achat complet, encaissement réel en environnement de pré-production)
 
-⏭️ Prochaine étape : {{nextStep}}
-📅 Mise en ligne prévue dans {{daysRemaining}} jours.
+Prochaine étape : {{nextStep}}
+Mise en ligne prévue dans {{daysRemaining}} jours.
 
-N'hésitez pas à passer la boutique en mode test depuis le lien d'aperçu et à me remonter le moindre détail.
+Je vous invite à parcourir la boutique depuis le lien d'aperçu communiqué et à me transmettre vos observations.
 
-Bonne journée,${SIGNATURE}`,
+Je reste à votre disposition pour tout échange complémentaire.${SIGNATURE}`,
   },
   {
     id: "followup-surmesure",
     category: "follow-up",
-    title: "Suivi projet — Format Sur-mesure",
-    description: "Point d'avancement pour une plateforme sur-mesure. Plus structuré, par sprint.",
-    subject: "Sprint en cours — projet {{company}}",
+    title: "Suivi de projet — Format Sur-mesure",
+    description: "Compte-rendu de sprint pour une plateforme sur-mesure.",
+    subject: "Compte-rendu de sprint — Projet {{company}}",
     vars: ["company", "contactName", "nextStep", "daysRemaining"],
     body: `Bonjour {{contactName}},
 
-Voici le compte-rendu hebdomadaire du projet de {{company}}.
+Veuillez trouver ci-dessous le compte-rendu du sprint en cours sur le projet de {{company}}.
 
-✅ Livré durant ce sprint :
-• (à compléter — ex : module d'authentification, schéma BDD, API publique)
+Éléments livrés durant ce sprint :
+— (à compléter — exemple : module d'authentification, schéma de base de données, première version de l'API)
 
-🔧 Sprint en cours :
-• (à compléter — ex : intégration CRM, dashboard administrateur)
+Travaux engagés sur le sprint suivant :
+— (à compléter — exemple : intégration CRM, tableau de bord administrateur)
 
-⚠️ Points d'attention / décisions à prendre :
-• (à compléter)
+Points d'attention et décisions à arbitrer :
+— (à compléter)
 
-⏭️ Prochain jalon : {{nextStep}}
-📅 Restant estimé : {{daysRemaining}} jours avant la prochaine démonstration.
+Prochain jalon : {{nextStep}}
+Charge restante estimée : {{daysRemaining}} jours avant la prochaine démonstration.
 
-Comme convenu, je vous propose une démo de 30 minutes en fin de sprint pour valider ensemble les évolutions. Dites-moi votre disponibilité.
+Conformément à notre cadre de collaboration, je vous propose une démonstration de trente minutes à l'issue du sprint afin de valider conjointement les évolutions. Pourriez-vous m'indiquer vos disponibilités ?
 
-Bien à vous,${SIGNATURE}`,
+Je reste à votre disposition pour tout point intermédiaire.${SIGNATURE}`,
   },
 ];
 
