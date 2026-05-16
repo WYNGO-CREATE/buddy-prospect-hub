@@ -43,11 +43,12 @@ export const WYNGO_LOGO_URL =
 
 const SIGNATURE = `
 
-Bien cordialement,
+Je vous prie d'agréer, {{contactName}}, l'expression de mes salutations distinguées.
 
+--
 {{senderName}}
 {{agencyName}}
-{{senderEmail}} · {{senderPhone}}
+{{senderEmail}} | {{senderPhone}}
 {{agencyWebsite}}`;
 
 export const EMAIL_TEMPLATES: EmailTemplate[] = [
