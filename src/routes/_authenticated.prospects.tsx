@@ -329,10 +329,27 @@ function ProspectsPage() {
                 </div>
                 <div className="space-y-2"><Label htmlFor="company">Société</Label><Input id="company" name="company" /></div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2"><Label htmlFor="email">Email</Label><Input id="email" name="email" type="email" /></div>
-                  <div className="space-y-2"><Label htmlFor="phone">Téléphone</Label><Input id="phone" name="phone" /></div>
+                  <div className="space-y-2"><Label htmlFor="email">Email</Label><Input id="email" name="email" type="email" value={liveEmail} onChange={(e) => setLiveEmail(e.target.value)} /></div>
+                  <div className="space-y-2"><Label htmlFor="phone">Téléphone</Label><Input id="phone" name="phone" value={livePhone} onChange={(e) => setLivePhone(e.target.value)} /></div>
                 </div>
-                <div className="space-y-2"><Label htmlFor="website">Site web</Label><Input id="website" name="website" placeholder="exemple.com" /></div>
+                <div className="space-y-2"><Label htmlFor="website">Site web</Label><Input id="website" name="website" placeholder="exemple.com" value={liveWebsite} onChange={(e) => setLiveWebsite(e.target.value)} /></div>
+                {liveDups.length > 0 && (
+                  <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm space-y-2">
+                    <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300 font-medium">
+                      <AlertTriangle className="h-4 w-4" /> {liveDups.length} doublon{liveDups.length > 1 ? "s" : ""} potentiel{liveDups.length > 1 ? "s" : ""}
+                    </div>
+                    <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                      {liveDups.map((d) => (
+                        <div key={d.id} className="text-xs">
+                          <Link to="/prospects/$id" params={{ id: d.id }} className="font-medium hover:underline" onClick={() => setOpen(false)}>
+                            {d.first_name} {d.last_name}{d.company ? ` — ${d.company}` : ""}
+                          </Link>
+                          <span className="text-muted-foreground"> · {[d.match_email && "email", d.match_phone && "tél", d.match_website && "site"].filter(Boolean).join(", ")} identique</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className="space-y-2"><Label htmlFor="source">Source</Label><Input id="source" name="source" placeholder="LinkedIn, Salon…" /></div>
                 <div className="space-y-2"><Label htmlFor="tags">Étiquettes (séparées par virgule)</Label><Input id="tags" name="tags" placeholder="VIP, Salon Paris 2026" /></div>
                 <div className="grid grid-cols-2 gap-3">
