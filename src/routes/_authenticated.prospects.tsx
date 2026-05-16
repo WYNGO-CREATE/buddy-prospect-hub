@@ -132,7 +132,7 @@ function ProspectsPage() {
 
   // Vérification en direct des doublons (email / téléphone / site) — debounce 400ms
   useEffect(() => {
-    if (!open) { setLiveDups([]); return; }
+    if (!open) { setLiveDups([]); setLiveEmail(""); setLivePhone(""); setLiveWebsite(""); return; }
     const e = liveEmail.trim();
     const p = livePhone.trim();
     const w = liveWebsite.trim();
