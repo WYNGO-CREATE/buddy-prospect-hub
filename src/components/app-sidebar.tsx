@@ -11,6 +11,7 @@ import {
   Snowflake,
   Activity,
   User,
+  Inbox,
 } from "lucide-react";
 import {
   Sidebar,
@@ -52,6 +53,21 @@ export function AppSidebar() {
     },
   });
 
+  // Badge: messages non lus dans l'inbox
+  const { data: unreadCount = 0 } = useQuery({
+    queryKey: ["inbox-unread", user?.id],
+    enabled: !!user,
+    refetchInterval: 30_000,
+    queryFn: async () => {
+      const { count } = await supabase
+        .from("messages")
+        .select("*", { count: "exact", head: true })
+        .eq("is_read", false)
+        .eq("is_archived", false);
+      return count ?? 0;
+    },
+  });
+
   // Badge: prospects froids (>30j sans contact, hors converti/perdu)
   const { data: coldCount = 0 } = useQuery({
     queryKey: ["cold-count", user?.id],
@@ -77,6 +93,7 @@ export function AppSidebar() {
 
   const items: Array<{ title: string; url: string; icon: typeof Users; badge: number }> = [
     { title: "Tableau de bord", url: "/tableau", icon: LayoutDashboard, badge: 0 },
+    { title: "Inbox", url: "/inbox", icon: Inbox, badge: unreadCount },
     { title: "Prospects", url: "/prospects", icon: Users, badge: 0 },
     { title: "Pipeline", url: "/pipeline", icon: Kanban, badge: 0 },
     { title: "Relances", url: "/relances", icon: CalendarClock, badge: dueCount },

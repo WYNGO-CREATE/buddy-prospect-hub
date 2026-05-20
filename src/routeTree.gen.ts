@@ -20,6 +20,7 @@ import { Route as AuthenticatedProfilRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedPipelineRouteImport } from './routes/_authenticated.pipeline'
 import { Route as AuthenticatedMailsRouteImport } from './routes/_authenticated.mails'
 import { Route as AuthenticatedLogsRouteImport } from './routes/_authenticated.logs'
+import { Route as AuthenticatedInboxRouteImport } from './routes/_authenticated.inbox'
 import { Route as AuthenticatedFroidsRouteImport } from './routes/_authenticated.froids'
 import { Route as AuthenticatedEquipeRouteImport } from './routes/_authenticated.equipe'
 import { Route as AuthenticatedProspectsIdRouteImport } from './routes/_authenticated.prospects.$id'
@@ -78,6 +79,11 @@ const AuthenticatedLogsRoute = AuthenticatedLogsRouteImport.update({
   path: '/logs',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedInboxRoute = AuthenticatedInboxRouteImport.update({
+  id: '/inbox',
+  path: '/inbox',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedFroidsRoute = AuthenticatedFroidsRouteImport.update({
   id: '/froids',
   path: '/froids',
@@ -101,6 +107,7 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/equipe': typeof AuthenticatedEquipeRoute
   '/froids': typeof AuthenticatedFroidsRoute
+  '/inbox': typeof AuthenticatedInboxRoute
   '/logs': typeof AuthenticatedLogsRoute
   '/mails': typeof AuthenticatedMailsRoute
   '/pipeline': typeof AuthenticatedPipelineRoute
@@ -115,6 +122,7 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/equipe': typeof AuthenticatedEquipeRoute
   '/froids': typeof AuthenticatedFroidsRoute
+  '/inbox': typeof AuthenticatedInboxRoute
   '/logs': typeof AuthenticatedLogsRoute
   '/mails': typeof AuthenticatedMailsRoute
   '/pipeline': typeof AuthenticatedPipelineRoute
@@ -132,6 +140,7 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/_authenticated/equipe': typeof AuthenticatedEquipeRoute
   '/_authenticated/froids': typeof AuthenticatedFroidsRoute
+  '/_authenticated/inbox': typeof AuthenticatedInboxRoute
   '/_authenticated/logs': typeof AuthenticatedLogsRoute
   '/_authenticated/mails': typeof AuthenticatedMailsRoute
   '/_authenticated/pipeline': typeof AuthenticatedPipelineRoute
@@ -150,6 +159,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/equipe'
     | '/froids'
+    | '/inbox'
     | '/logs'
     | '/mails'
     | '/pipeline'
@@ -164,6 +174,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/equipe'
     | '/froids'
+    | '/inbox'
     | '/logs'
     | '/mails'
     | '/pipeline'
@@ -180,6 +191,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/_authenticated/equipe'
     | '/_authenticated/froids'
+    | '/_authenticated/inbox'
     | '/_authenticated/logs'
     | '/_authenticated/mails'
     | '/_authenticated/pipeline'
@@ -276,6 +288,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedLogsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/inbox': {
+      id: '/_authenticated/inbox'
+      path: '/inbox'
+      fullPath: '/inbox'
+      preLoaderRoute: typeof AuthenticatedInboxRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/froids': {
       id: '/_authenticated/froids'
       path: '/froids'
@@ -317,6 +336,7 @@ const AuthenticatedProspectsRouteWithChildren =
 interface AuthenticatedRouteChildren {
   AuthenticatedEquipeRoute: typeof AuthenticatedEquipeRoute
   AuthenticatedFroidsRoute: typeof AuthenticatedFroidsRoute
+  AuthenticatedInboxRoute: typeof AuthenticatedInboxRoute
   AuthenticatedLogsRoute: typeof AuthenticatedLogsRoute
   AuthenticatedMailsRoute: typeof AuthenticatedMailsRoute
   AuthenticatedPipelineRoute: typeof AuthenticatedPipelineRoute
@@ -330,6 +350,7 @@ interface AuthenticatedRouteChildren {
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedEquipeRoute: AuthenticatedEquipeRoute,
   AuthenticatedFroidsRoute: AuthenticatedFroidsRoute,
+  AuthenticatedInboxRoute: AuthenticatedInboxRoute,
   AuthenticatedLogsRoute: AuthenticatedLogsRoute,
   AuthenticatedMailsRoute: AuthenticatedMailsRoute,
   AuthenticatedPipelineRoute: AuthenticatedPipelineRoute,

@@ -179,6 +179,56 @@ export type Database = {
           },
         ]
       }
+      messages: {
+        Row: {
+          channel: Database["public"]["Enums"]["message_channel"]
+          content: string
+          created_at: string
+          direction: Database["public"]["Enums"]["message_direction"]
+          id: string
+          is_archived: boolean
+          is_read: boolean
+          occurred_at: string
+          owner_id: string
+          prospect_id: string
+          subject: string | null
+        }
+        Insert: {
+          channel: Database["public"]["Enums"]["message_channel"]
+          content: string
+          created_at?: string
+          direction?: Database["public"]["Enums"]["message_direction"]
+          id?: string
+          is_archived?: boolean
+          is_read?: boolean
+          occurred_at?: string
+          owner_id: string
+          prospect_id: string
+          subject?: string | null
+        }
+        Update: {
+          channel?: Database["public"]["Enums"]["message_channel"]
+          content?: string
+          created_at?: string
+          direction?: Database["public"]["Enums"]["message_direction"]
+          id?: string
+          is_archived?: boolean
+          is_read?: boolean
+          occurred_at?: string
+          owner_id?: string
+          prospect_id?: string
+          subject?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "prospects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       prospect_events: {
         Row: {
           created_at: string
@@ -359,6 +409,8 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "collaborator"
+      message_channel: "email" | "linkedin" | "call" | "whatsapp" | "note"
+      message_direction: "inbound" | "outbound"
       prospect_status:
         | "nouveau"
         | "en_cours"
