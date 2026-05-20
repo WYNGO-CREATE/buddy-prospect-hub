@@ -2,3 +2,14 @@ project_id = "bowqsutfwtutlhfkdiij"
 
 [functions.invite-collaborator]
 verify_jwt = true
+
+[functions.gmail-oauth-callback]
+verify_jwt = true
+
+[functions.gmail-sync]
+# JWT verification désactivée pour permettre l'appel via pg_cron (cron secret)
+# Le contrôle d'accès est géré dans le code (auth header OU x-cron-secret)
+verify_jwt = false
+
+[functions.gmail-send]
+verify_jwt = true

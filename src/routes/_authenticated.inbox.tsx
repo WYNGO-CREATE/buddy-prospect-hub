@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -45,6 +45,8 @@ import {
   Circle,
   CircleDot,
   ExternalLink,
+  Send,
+  RefreshCw,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -101,6 +103,16 @@ function InboxPage() {
   const [statusFilter, setStatusFilter] = useState<"all" | "unread" | "archived">("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  // Compte Gmail connecté ?
+  const { data: gmailAccount } = useQuery({
+    queryKey: ["my-gmail-account"],
+    queryFn: async () => {
+      const { data } = await supabase.from("gmail_accounts").select("*").maybeSingle();
+      return data;
+    },
+  });
 
   // ─── Récupération des messages + prospects ───
   const { data: messages = [], isLoading } = useQuery({
@@ -223,16 +235,63 @@ function InboxPage() {
           </p>
         </div>
 
-        <ComposeDialog
-          open={composeOpen}
-          onOpenChange={setComposeOpen}
-          ownerId={user?.id}
-          onCreated={() => {
-            qc.invalidateQueries({ queryKey: ["inbox-messages"] });
-            qc.invalidateQueries({ queryKey: ["inbox-unread"] });
-          }}
-        />
+        <div className="flex items-center gap-2">
+          {gmailAccount && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                setSyncing(true);
+                const { error } = await supabase.functions.invoke("gmail-sync");
+                setSyncing(false);
+                if (error) toast.error("Sync échouée");
+                else toast.success("Synchronisé");
+                qc.invalidateQueries({ queryKey: ["inbox-messages"] });
+                qc.invalidateQueries({ queryKey: ["inbox-unread"] });
+                qc.invalidateQueries({ queryKey: ["my-gmail-account"] });
+              }}
+              disabled={syncing}
+            >
+              <RefreshCw className={`h-4 w-4 mr-1.5 ${syncing ? "animate-spin" : ""}`} />
+              {syncing ? "Sync…" : "Synchroniser Gmail"}
+            </Button>
+          )}
+          <ComposeDialog
+            open={composeOpen}
+            onOpenChange={setComposeOpen}
+            ownerId={user?.id}
+            gmailConnected={!!gmailAccount}
+            onCreated={() => {
+              qc.invalidateQueries({ queryKey: ["inbox-messages"] });
+              qc.invalidateQueries({ queryKey: ["inbox-unread"] });
+            }}
+          />
+        </div>
       </div>
+
+      {/* Bandeau Gmail status */}
+      {gmailAccount && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900 text-xs">
+          <Mail className="h-3.5 w-3.5 text-emerald-600" />
+          <span className="text-emerald-900 dark:text-emerald-200 font-medium">{gmailAccount.email}</span>
+          {gmailAccount.last_sync_at && (
+            <span className="text-emerald-700 dark:text-emerald-300">
+              · synchronisé {formatDistanceToNow(new Date(gmailAccount.last_sync_at), { addSuffix: true, locale: fr })}
+            </span>
+          )}
+          {gmailAccount.sync_error && (
+            <span className="text-amber-700 dark:text-amber-300 ml-auto">⚠ {gmailAccount.sync_error.slice(0, 80)}</span>
+          )}
+        </div>
+      )}
+      {!gmailAccount && (
+        <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-md bg-muted/40 border text-xs">
+          <span className="text-muted-foreground">Connectez Gmail pour synchroniser automatiquement vos échanges.</span>
+          <Link to="/profil" className="text-primary font-medium hover:underline">
+            Connecter Gmail →
+          </Link>
+        </div>
+      )}
 
       {/* Filters bar */}
       <div className="flex flex-wrap items-center gap-2">
@@ -508,11 +567,13 @@ function ComposeDialog({
   open,
   onOpenChange,
   ownerId,
+  gmailConnected,
   onCreated,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   ownerId: string | undefined;
+  gmailConnected: boolean;
   onCreated: () => void;
 }) {
   const [prospectId, setProspectId] = useState("");
@@ -521,6 +582,7 @@ function ComposeDialog({
   const [subject, setSubject] = useState("");
   const [content, setContent] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [sendViaGmail, setSendViaGmail] = useState(false);
 
   const { data: prospects = [] } = useQuery({
     queryKey: ["all-prospects-compose"],
@@ -528,21 +590,59 @@ function ComposeDialog({
     queryFn: async () => {
       const { data } = await supabase
         .from("prospects")
-        .select("id, first_name, last_name, company")
+        .select("id, first_name, last_name, company, email")
         .order("first_name");
-      return (data || []) as Array<{ id: string; first_name: string; last_name: string; company: string | null }>;
+      return (data || []) as Array<{ id: string; first_name: string; last_name: string; company: string | null; email: string | null }>;
     },
   });
 
+  const selectedProspect = prospects.find((p) => p.id === prospectId);
+
   const reset = () => {
     setProspectId(""); setChannel("note"); setDirection("outbound");
-    setSubject(""); setContent("");
+    setSubject(""); setContent(""); setSendViaGmail(false);
   };
+
+  // Si l'utilisateur passe en canal email avec Gmail connecté, propose l'envoi
+  useEffect(() => {
+    if (channel === "email" && gmailConnected && direction === "outbound") {
+      setSendViaGmail(true);
+    } else {
+      setSendViaGmail(false);
+    }
+  }, [channel, gmailConnected, direction]);
 
   const submit = async () => {
     if (!ownerId) return;
     if (!prospectId) { toast.error("Sélectionnez un prospect"); return; }
     if (!content.trim()) { toast.error("Le contenu est vide"); return; }
+
+    // Mode "Envoyer réellement via Gmail"
+    if (sendViaGmail) {
+      if (!selectedProspect?.email) {
+        toast.error("Ce prospect n'a pas d'email enregistré"); return;
+      }
+      setSubmitting(true);
+      const { data, error } = await supabase.functions.invoke("gmail-send", {
+        body: {
+          prospect_id: prospectId,
+          to: selectedProspect.email,
+          subject: subject.trim(),
+          body: content.trim(),
+        },
+      });
+      setSubmitting(false);
+      if (error || data?.error) {
+        toast.error(data?.error || error?.message || "Envoi échoué"); return;
+      }
+      toast.success(`Email envoyé à ${selectedProspect.email}`);
+      reset();
+      onCreated();
+      onOpenChange(false);
+      return;
+    }
+
+    // Mode log manuel (par défaut)
     setSubmitting(true);
     const { error } = await supabase.from("messages").insert({
       prospect_id: prospectId,
@@ -551,7 +651,7 @@ function ComposeDialog({
       direction,
       subject: subject.trim() || null,
       content: content.trim(),
-      is_read: true,  // ce qu'on saisit soi-même est lu par défaut
+      is_read: true,
     });
     setSubmitting(false);
     if (error) { toast.error(error.message); return; }
@@ -622,7 +722,7 @@ function ComposeDialog({
 
           {(channel === "email" || channel === "linkedin") && (
             <div className="space-y-2">
-              <Label>Sujet (optionnel)</Label>
+              <Label>Sujet {channel === "email" && sendViaGmail ? "*" : "(optionnel)"}</Label>
               <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Ex : Suivi proposition commerciale" />
             </div>
           )}
@@ -633,14 +733,40 @@ function ComposeDialog({
               rows={6}
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              placeholder="Tapez le contenu du message ou un résumé de l'appel…"
+              placeholder={sendViaGmail ? "Tapez votre email…" : "Tapez le contenu du message ou un résumé de l'appel…"}
             />
           </div>
+
+          {channel === "email" && gmailConnected && direction === "outbound" && (
+            <label className="flex items-start gap-2 p-3 rounded-md bg-primary/5 border border-primary/20 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={sendViaGmail}
+                onChange={(e) => setSendViaGmail(e.target.checked)}
+                className="mt-0.5"
+              />
+              <div className="flex-1">
+                <p className="text-sm font-medium flex items-center gap-1.5">
+                  <Send className="h-3.5 w-3.5 text-primary" />
+                  Envoyer réellement via Gmail
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {selectedProspect?.email
+                    ? `L'email sera envoyé à ${selectedProspect.email} depuis votre Gmail.`
+                    : "⚠ Ce prospect n'a pas d'email enregistré."}
+                </p>
+              </div>
+            </label>
+          )}
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Annuler</Button>
           <Button onClick={submit} disabled={submitting}>
-            {submitting ? "Enregistrement…" : "Enregistrer"}
+            {submitting
+              ? (sendViaGmail ? "Envoi…" : "Enregistrement…")
+              : sendViaGmail
+                ? (<><Send className="h-4 w-4 mr-1.5" /> Envoyer</>)
+                : "Enregistrer"}
           </Button>
         </DialogFooter>
       </DialogContent>

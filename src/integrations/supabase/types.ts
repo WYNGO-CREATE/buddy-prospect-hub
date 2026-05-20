@@ -38,6 +38,54 @@ export type Database = {
         }
         Relationships: []
       }
+      gmail_accounts: {
+        Row: {
+          access_token: string
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          is_active: boolean
+          last_history_id: string | null
+          last_sync_at: string | null
+          refresh_token: string
+          scope: string | null
+          sync_error: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_token: string
+          created_at?: string
+          email: string
+          expires_at: string
+          id?: string
+          is_active?: boolean
+          last_history_id?: string | null
+          last_sync_at?: string | null
+          refresh_token: string
+          scope?: string | null
+          sync_error?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_token?: string
+          created_at?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          is_active?: boolean
+          last_history_id?: string | null
+          last_sync_at?: string | null
+          refresh_token?: string
+          scope?: string | null
+          sync_error?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       call_logs: {
         Row: {
           called_at: string
@@ -185,39 +233,54 @@ export type Database = {
           content: string
           created_at: string
           direction: Database["public"]["Enums"]["message_direction"]
+          external_id: string | null
+          from_email: string | null
           id: string
           is_archived: boolean
           is_read: boolean
           occurred_at: string
           owner_id: string
           prospect_id: string
+          source: string
           subject: string | null
+          thread_id: string | null
+          to_email: string | null
         }
         Insert: {
           channel: Database["public"]["Enums"]["message_channel"]
           content: string
           created_at?: string
           direction?: Database["public"]["Enums"]["message_direction"]
+          external_id?: string | null
+          from_email?: string | null
           id?: string
           is_archived?: boolean
           is_read?: boolean
           occurred_at?: string
           owner_id: string
           prospect_id: string
+          source?: string
           subject?: string | null
+          thread_id?: string | null
+          to_email?: string | null
         }
         Update: {
           channel?: Database["public"]["Enums"]["message_channel"]
           content?: string
           created_at?: string
           direction?: Database["public"]["Enums"]["message_direction"]
+          external_id?: string | null
+          from_email?: string | null
           id?: string
           is_archived?: boolean
           is_read?: boolean
           occurred_at?: string
           owner_id?: string
           prospect_id?: string
+          source?: string
           subject?: string | null
+          thread_id?: string | null
+          to_email?: string | null
         }
         Relationships: [
           {
