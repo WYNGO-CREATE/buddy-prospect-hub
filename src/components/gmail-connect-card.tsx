@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -26,35 +26,8 @@ export function GmailConnectCard() {
     },
   });
 
-  // Gère le retour de l'OAuth Google (code dans l'URL)
-  useEffect(() => {
-    const url = new URL(window.location.href);
-    const code = url.searchParams.get("code");
-    const state = url.searchParams.get("state");
-    if (code && state === "gmail_oauth") {
-      handleOAuthCallback(code);
-      url.searchParams.delete("code");
-      url.searchParams.delete("state");
-      url.searchParams.delete("scope");
-      window.history.replaceState({}, "", url.toString());
-    }
-  }, []);
-
-  async function handleOAuthCallback(code: string) {
-    toast.loading("Connexion à Gmail…", { id: "gmail-oauth" });
-    const redirect_uri = `${window.location.origin}/profil`;
-    const { data, error } = await supabase.functions.invoke("gmail-oauth-callback", {
-      body: { code, redirect_uri },
-    });
-    if (error || data?.error) {
-      toast.error(data?.message || data?.error || error?.message || "Erreur de connexion", { id: "gmail-oauth" });
-      return;
-    }
-    toast.success(`Gmail connecté (${data.email})`, { id: "gmail-oauth" });
-    qc.invalidateQueries({ queryKey: ["my-gmail-account"] });
-    // Lance une première sync auto
-    setTimeout(() => triggerSync(), 500);
-  }
+  // Le callback OAuth est désormais géré par la route dédiée /auth/gmail-callback.
+  // Ici on ne traite plus le code dans l'URL.
 
   function startOAuth() {
     const clientId = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID;
@@ -62,7 +35,7 @@ export function GmailConnectCard() {
       toast.error("VITE_GOOGLE_OAUTH_CLIENT_ID manquant dans la config. Ajoutez-le dans les secrets Lovable.");
       return;
     }
-    const redirect_uri = `${window.location.origin}/profil`;
+    const redirect_uri = `${window.location.origin}/auth/gmail-callback`;
     const params = new URLSearchParams({
       client_id: clientId,
       redirect_uri,
@@ -180,6 +153,7 @@ export function GmailConnectCard() {
             </Button>
           </>
         )}
+
       </CardContent>
     </Card>
   );

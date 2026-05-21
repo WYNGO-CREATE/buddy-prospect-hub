@@ -52,6 +52,8 @@ import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { renderTemplate } from "@/lib/render-template";
+import { Sparkles } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/inbox")({
   component: InboxPage,
@@ -596,7 +598,51 @@ function ComposeDialog({
     },
   });
 
+  // Templates disponibles (privés + partagés)
+  const { data: templates = [] } = useQuery({
+    queryKey: ["templates-for-compose"],
+    enabled: open,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("email_templates")
+        .select("id, name, subject, body, category")
+        .order("name");
+      return (data || []) as Array<{ id: string; name: string; subject: string; body: string; category: string | null }>;
+    },
+  });
+
+  // Profil du user pour signature
+  const { data: myProfile } = useQuery({
+    queryKey: ["my-profile-compose"],
+    enabled: open && !!ownerId,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("profiles")
+        .select("full_name, email")
+        .eq("id", ownerId!)
+        .maybeSingle();
+      return data;
+    },
+  });
+
   const selectedProspect = prospects.find((p) => p.id === prospectId);
+
+  // Applique un template au sujet + body en rendant les variables
+  const applyTemplate = (templateId: string) => {
+    const tpl = templates.find((t) => t.id === templateId);
+    if (!tpl) return;
+    const ctx = {
+      first_name: selectedProspect?.first_name,
+      last_name: selectedProspect?.last_name,
+      company: selectedProspect?.company,
+      email: selectedProspect?.email,
+      sender_name: myProfile?.full_name,
+      sender_email: myProfile?.email,
+    };
+    setSubject(renderTemplate(tpl.subject, ctx));
+    setContent(renderTemplate(tpl.body, ctx));
+    toast.success(`Template "${tpl.name}" appliqué`);
+  };
 
   const reset = () => {
     setProspectId(""); setChannel("note"); setDirection("outbound");
@@ -719,6 +765,30 @@ function ComposeDialog({
               </Select>
             </div>
           </div>
+
+          {channel === "email" && templates.length > 0 && (
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5 text-primary" />
+                Insérer un template
+              </Label>
+              <Select value="" onValueChange={(v) => v && applyTemplate(v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choisir un template…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {templates.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}{t.category ? ` · ${t.category}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground">
+                Les variables seront remplacées automatiquement avec les infos du prospect sélectionné.
+              </p>
+            </div>
+          )}
 
           {(channel === "email" || channel === "linkedin") && (
             <div className="space-y-2">

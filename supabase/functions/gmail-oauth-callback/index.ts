@@ -28,13 +28,25 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
   try {
+    console.log("[gmail-oauth-callback] request received");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY")!;
-    const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_OAUTH_CLIENT_ID")!;
-    const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_OAUTH_CLIENT_SECRET")!;
+    const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_OAUTH_CLIENT_ID");
+    const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_OAUTH_CLIENT_SECRET");
+
+    console.log("[gmail-oauth-callback] env check", {
+      hasUrl: !!SUPABASE_URL,
+      hasService: !!SERVICE_KEY,
+      hasAnon: !!ANON,
+      hasClientId: !!GOOGLE_CLIENT_ID,
+      clientIdPrefix: GOOGLE_CLIENT_ID?.slice(0, 20),
+      hasSecret: !!GOOGLE_CLIENT_SECRET,
+      secretPrefix: GOOGLE_CLIENT_SECRET?.slice(0, 8),
+    });
 
     if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+      console.error("[gmail-oauth-callback] missing google secrets");
       return json({ error: "GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET not configured" }, 500);
     }
 
@@ -68,8 +80,10 @@ Deno.serve(async (req) => {
 
     if (!tokenRes.ok) {
       const err = await tokenRes.text();
-      return json({ error: "Token exchange failed", details: err }, 400);
+      console.error("[gmail-oauth-callback] token exchange failed", tokenRes.status, err);
+      return json({ error: "Token exchange failed", status: tokenRes.status, details: err }, 400);
     }
+    console.log("[gmail-oauth-callback] token exchange OK");
 
     const tokens = await tokenRes.json();
     // tokens: { access_token, refresh_token, expires_in, scope, token_type, id_token }
@@ -114,10 +128,15 @@ Deno.serve(async (req) => {
       { onConflict: "user_id" }
     );
 
-    if (upsertErr) return json({ error: "DB upsert failed", details: upsertErr.message }, 500);
+    if (upsertErr) {
+      console.error("[gmail-oauth-callback] upsert failed", upsertErr);
+      return json({ error: "DB upsert failed", details: upsertErr.message }, 500);
+    }
 
+    console.log("[gmail-oauth-callback] success for", gmailEmail);
     return json({ success: true, email: gmailEmail });
   } catch (e) {
+    console.error("[gmail-oauth-callback] uncaught error", e);
     return json({ error: String(e) }, 500);
   }
 });

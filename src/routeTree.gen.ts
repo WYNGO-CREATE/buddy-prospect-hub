@@ -13,6 +13,9 @@ import { Route as SignupRouteImport } from './routes/signup'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated.index'
+import { Route as AuthGmailCallbackRouteImport } from './routes/auth.gmail-callback'
+import { Route as AuthenticatedWorkflowsRouteImport } from './routes/_authenticated.workflows'
+import { Route as AuthenticatedTemplatesRouteImport } from './routes/_authenticated.templates'
 import { Route as AuthenticatedTableauRouteImport } from './routes/_authenticated.tableau'
 import { Route as AuthenticatedRelancesRouteImport } from './routes/_authenticated.relances'
 import { Route as AuthenticatedProspectsRouteImport } from './routes/_authenticated.prospects'
@@ -42,6 +45,21 @@ const AuthenticatedRoute = AuthenticatedRouteImport.update({
 const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthGmailCallbackRoute = AuthGmailCallbackRouteImport.update({
+  id: '/auth/gmail-callback',
+  path: '/auth/gmail-callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedWorkflowsRoute = AuthenticatedWorkflowsRouteImport.update({
+  id: '/workflows',
+  path: '/workflows',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedTemplatesRoute = AuthenticatedTemplatesRouteImport.update({
+  id: '/templates',
+  path: '/templates',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedTableauRoute = AuthenticatedTableauRouteImport.update({
@@ -115,6 +133,9 @@ export interface FileRoutesByFullPath {
   '/prospects': typeof AuthenticatedProspectsRouteWithChildren
   '/relances': typeof AuthenticatedRelancesRoute
   '/tableau': typeof AuthenticatedTableauRoute
+  '/templates': typeof AuthenticatedTemplatesRoute
+  '/workflows': typeof AuthenticatedWorkflowsRoute
+  '/auth/gmail-callback': typeof AuthGmailCallbackRoute
   '/prospects/$id': typeof AuthenticatedProspectsIdRoute
 }
 export interface FileRoutesByTo {
@@ -130,6 +151,9 @@ export interface FileRoutesByTo {
   '/prospects': typeof AuthenticatedProspectsRouteWithChildren
   '/relances': typeof AuthenticatedRelancesRoute
   '/tableau': typeof AuthenticatedTableauRoute
+  '/templates': typeof AuthenticatedTemplatesRoute
+  '/workflows': typeof AuthenticatedWorkflowsRoute
+  '/auth/gmail-callback': typeof AuthGmailCallbackRoute
   '/': typeof AuthenticatedIndexRoute
   '/prospects/$id': typeof AuthenticatedProspectsIdRoute
 }
@@ -148,6 +172,9 @@ export interface FileRoutesById {
   '/_authenticated/prospects': typeof AuthenticatedProspectsRouteWithChildren
   '/_authenticated/relances': typeof AuthenticatedRelancesRoute
   '/_authenticated/tableau': typeof AuthenticatedTableauRoute
+  '/_authenticated/templates': typeof AuthenticatedTemplatesRoute
+  '/_authenticated/workflows': typeof AuthenticatedWorkflowsRoute
+  '/auth/gmail-callback': typeof AuthGmailCallbackRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/prospects/$id': typeof AuthenticatedProspectsIdRoute
 }
@@ -167,6 +194,9 @@ export interface FileRouteTypes {
     | '/prospects'
     | '/relances'
     | '/tableau'
+    | '/templates'
+    | '/workflows'
+    | '/auth/gmail-callback'
     | '/prospects/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -182,6 +212,9 @@ export interface FileRouteTypes {
     | '/prospects'
     | '/relances'
     | '/tableau'
+    | '/templates'
+    | '/workflows'
+    | '/auth/gmail-callback'
     | '/'
     | '/prospects/$id'
   id:
@@ -199,6 +232,9 @@ export interface FileRouteTypes {
     | '/_authenticated/prospects'
     | '/_authenticated/relances'
     | '/_authenticated/tableau'
+    | '/_authenticated/templates'
+    | '/_authenticated/workflows'
+    | '/auth/gmail-callback'
     | '/_authenticated/'
     | '/_authenticated/prospects/$id'
   fileRoutesById: FileRoutesById
@@ -207,6 +243,7 @@ export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
+  AuthGmailCallbackRoute: typeof AuthGmailCallbackRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -237,6 +274,27 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AuthenticatedIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/auth/gmail-callback': {
+      id: '/auth/gmail-callback'
+      path: '/auth/gmail-callback'
+      fullPath: '/auth/gmail-callback'
+      preLoaderRoute: typeof AuthGmailCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/workflows': {
+      id: '/_authenticated/workflows'
+      path: '/workflows'
+      fullPath: '/workflows'
+      preLoaderRoute: typeof AuthenticatedWorkflowsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/templates': {
+      id: '/_authenticated/templates'
+      path: '/templates'
+      fullPath: '/templates'
+      preLoaderRoute: typeof AuthenticatedTemplatesRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/tableau': {
@@ -344,6 +402,8 @@ interface AuthenticatedRouteChildren {
   AuthenticatedProspectsRoute: typeof AuthenticatedProspectsRouteWithChildren
   AuthenticatedRelancesRoute: typeof AuthenticatedRelancesRoute
   AuthenticatedTableauRoute: typeof AuthenticatedTableauRoute
+  AuthenticatedTemplatesRoute: typeof AuthenticatedTemplatesRoute
+  AuthenticatedWorkflowsRoute: typeof AuthenticatedWorkflowsRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
 }
 
@@ -358,6 +418,8 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedProspectsRoute: AuthenticatedProspectsRouteWithChildren,
   AuthenticatedRelancesRoute: AuthenticatedRelancesRoute,
   AuthenticatedTableauRoute: AuthenticatedTableauRoute,
+  AuthenticatedTemplatesRoute: AuthenticatedTemplatesRoute,
+  AuthenticatedWorkflowsRoute: AuthenticatedWorkflowsRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
 }
 
@@ -369,6 +431,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
+  AuthGmailCallbackRoute: AuthGmailCallbackRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

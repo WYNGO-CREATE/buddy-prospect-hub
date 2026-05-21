@@ -1,4 +1,4 @@
-project_id = "bowqsutfwtutlhfkdiij"
+project_id = "mwkkgubvdswmdaiswepl"
 
 [functions.invite-collaborator]
 verify_jwt = true
@@ -13,3 +13,7 @@ verify_jwt = false
 
 [functions.gmail-send]
 verify_jwt = true
+
+[functions.workflow-tick]
+# Auth interne : x-cron-secret OU JWT user (l'edge code vérifie lui-même)
+verify_jwt = false

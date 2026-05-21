@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Users, PhoneCall, Star, Trophy, CalendarClock, Activity, Medal } from "lucide-react";
+import { Users, PhoneCall, Star, Trophy, CalendarClock, Activity, Medal, Mail, Send, MessageSquareReply, TrendingUp, Workflow as WorkflowIcon } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 
@@ -46,7 +46,7 @@ function useStats(scope: "mine" | "all", userId?: string) {
   });
 }
 
-function StatCard({ icon: Icon, label, value, color }: any) {
+function StatCard({ icon: Icon, label, value, color }: { icon: any; label: string; value: string | number; color: string }) {
   return (
     <Card>
       <CardContent className="p-6 flex items-center justify-between">
@@ -62,8 +62,49 @@ function StatCard({ icon: Icon, label, value, color }: any) {
   );
 }
 
+function useEmailKpis(scope: "mine" | "all", userId?: string) {
+  return useQuery({
+    queryKey: ["email-kpis", scope, userId],
+    enabled: scope === "all" || !!userId,
+    queryFn: async () => {
+      const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
+      const filterOwner = (q: any) => (scope === "mine" ? q.eq("owner_id", userId) : q);
+
+      const [sent30, received30, activeRuns, completedRuns] = await Promise.all([
+        filterOwner(
+          supabase.from("messages").select("*", { count: "exact", head: true })
+            .eq("channel", "email").eq("direction", "outbound").gte("occurred_at", since),
+        ),
+        filterOwner(
+          supabase.from("messages").select("*", { count: "exact", head: true })
+            .eq("channel", "email").eq("direction", "inbound").gte("occurred_at", since),
+        ),
+        filterOwner(
+          supabase.from("workflow_runs").select("*", { count: "exact", head: true }).eq("status", "running"),
+        ),
+        filterOwner(
+          supabase.from("workflow_runs").select("*", { count: "exact", head: true }).eq("status", "completed"),
+        ),
+      ]);
+
+      const sent = sent30.count ?? 0;
+      const received = received30.count ?? 0;
+      const replyRate = sent > 0 ? Math.round((received / sent) * 100) : 0;
+
+      return {
+        sent,
+        received,
+        replyRate,
+        activeRuns: activeRuns.count ?? 0,
+        completedRuns: completedRuns.count ?? 0,
+      };
+    },
+  });
+}
+
 function StatsView({ scope, userId }: { scope: "mine" | "all"; userId?: string }) {
   const { data, isLoading } = useStats(scope, userId);
+  const { data: emailKpis } = useEmailKpis(scope, userId);
   if (isLoading) return <p className="text-muted-foreground">Chargement…</p>;
   if (!data) return null;
 
@@ -74,6 +115,19 @@ function StatsView({ scope, userId }: { scope: "mine" | "all"; userId?: string }
         <StatCard icon={PhoneCall} label="Appels effectués" value={data.calls} color="bg-violet-500/15 text-violet-600" />
         <StatCard icon={Star} label="Intéressés" value={data.interested} color="bg-amber-500/15 text-amber-600" />
         <StatCard icon={Trophy} label="Convertis" value={data.converted} color="bg-emerald-500/15 text-emerald-600" />
+      </div>
+
+      {/* KPIs Emails & Workflows */}
+      <div>
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
+          <Mail className="h-3.5 w-3.5" /> Performance emails (30 derniers jours)
+        </h2>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard icon={Send} label="Emails envoyés" value={emailKpis?.sent ?? 0} color="bg-sky-500/15 text-sky-600" />
+          <StatCard icon={MessageSquareReply} label="Réponses reçues" value={emailKpis?.received ?? 0} color="bg-emerald-500/15 text-emerald-600" />
+          <StatCard icon={TrendingUp} label="Taux de réponse" value={`${emailKpis?.replyRate ?? 0}%`} color="bg-violet-500/15 text-violet-600" />
+          <StatCard icon={WorkflowIcon} label="Workflows actifs" value={emailKpis?.activeRuns ?? 0} color="bg-amber-500/15 text-amber-600" />
+        </div>
       </div>
 
       <Card>
