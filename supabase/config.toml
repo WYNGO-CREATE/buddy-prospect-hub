@@ -17,3 +17,6 @@ verify_jwt = true
 [functions.workflow-tick]
 # Auth interne : x-cron-secret OU JWT user (l'edge code vérifie lui-même)
 verify_jwt = false
+
+[functions.template-generate]
+verify_jwt = true

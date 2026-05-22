@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger,
 } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2, Mail, Sparkles, Eye, Users, User } from "lucide-react";
+import { Plus, Pencil, Trash2, Mail, Sparkles, Eye, Users, User, Wand2, Brain, Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { AVAILABLE_VARS, renderTemplate } from "@/lib/render-template";
 
@@ -41,10 +41,13 @@ const CATEGORIES = [
 ];
 
 function TemplatesPage() {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const qc = useQueryClient();
   const [editing, setEditing] = useState<Template | null>(null);
   const [creating, setCreating] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiContextOpen, setAiContextOpen] = useState(false);
+  const [seedFromAI, setSeedFromAI] = useState<{ name: string; subject: string; body: string; category: string } | null>(null);
 
   const { data: templates = [], isLoading } = useQuery({
     queryKey: ["templates"],
@@ -85,11 +88,24 @@ function TemplatesPage() {
             — utilisables dans l'Inbox et les Workflows.
           </p>
         </div>
-        <Button onClick={() => setCreating(true)}>
-          <Plus className="h-4 w-4 mr-1.5" />
-          Nouveau template
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="default" onClick={() => setAiOpen(true)} className="bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-700 hover:to-fuchsia-700 text-white">
+            <Wand2 className="h-4 w-4 mr-1.5" />
+            Générer avec l'IA
+          </Button>
+          <Button variant="outline" onClick={() => setCreating(true)}>
+            <Plus className="h-4 w-4 mr-1.5" />
+            Manuel
+          </Button>
+        </div>
       </div>
+
+      {/* Contexte IA — bloc pliable */}
+      <AIContextCard
+        open={aiContextOpen}
+        onToggle={() => setAiContextOpen((v) => !v)}
+        isAdmin={role === "admin"}
+      />
 
       {/* Variables disponibles */}
       <Card className="bg-muted/30">
@@ -180,34 +196,377 @@ function TemplatesPage() {
       )}
 
       {/* Dialog création / édition */}
-      {(creating || editing) && (
+      {(creating || editing || seedFromAI) && (
         <TemplateEditor
           template={editing}
+          seed={seedFromAI}
           onClose={() => {
             setCreating(false);
             setEditing(null);
+            setSeedFromAI(null);
           }}
           onSaved={() => qc.invalidateQueries({ queryKey: ["templates"] })}
+        />
+      )}
+
+      {/* Dialog IA */}
+      {aiOpen && (
+        <AIGenerateDialog
+          onClose={() => setAiOpen(false)}
+          onGenerated={(result) => {
+            setAiOpen(false);
+            setSeedFromAI(result);
+          }}
+          onOpenContext={() => {
+            setAiOpen(false);
+            setAiContextOpen(true);
+          }}
         />
       )}
     </div>
   );
 }
 
+// ─── Bloc "Contexte IA" : ce que l'agence renseigne UNE FOIS ───
+function AIContextCard({ open, onToggle, isAdmin }: { open: boolean; onToggle: () => void; isAdmin: boolean }) {
+  const qc = useQueryClient();
+  const { data: agency } = useQuery({
+    queryKey: ["agency-settings-ai"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("agency_settings")
+        .select("name, activity, business_brief, target_client, value_props, default_tone")
+        .eq("id", true)
+        .maybeSingle();
+      return data;
+    },
+  });
+
+  const [activity, setActivity] = useState("");
+  const [brief, setBrief] = useState("");
+  const [target, setTarget] = useState("");
+  const [props, setProps] = useState("");
+  const [tone, setTone] = useState("professionnel");
+  const [saving, setSaving] = useState(false);
+
+  // Hydrate quand les données arrivent
+  useEffect(() => {
+    if (agency) {
+      setActivity(agency.activity || "");
+      setBrief(agency.business_brief || "");
+      setTarget(agency.target_client || "");
+      setProps(agency.value_props || "");
+      setTone(agency.default_tone || "professionnel");
+    }
+  }, [agency]);
+
+  const save = async () => {
+    if (!isAdmin) {
+      toast.error("Seul un admin peut modifier le contexte IA partagé");
+      return;
+    }
+    setSaving(true);
+    const { error } = await supabase
+      .from("agency_settings")
+      .update({
+        activity: activity.trim() || null,
+        business_brief: brief.trim() || null,
+        target_client: target.trim() || null,
+        value_props: props.trim() || null,
+        default_tone: tone,
+      })
+      .eq("id", true);
+    setSaving(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Contexte IA mis à jour");
+    qc.invalidateQueries({ queryKey: ["agency-settings-ai"] });
+  };
+
+  const isConfigured = !!(agency?.business_brief && agency?.target_client);
+
+  return (
+    <Card className={isConfigured ? "" : "border-violet-300 bg-violet-50/50 dark:bg-violet-950/20"}>
+      <CardHeader className="pb-3">
+        <button
+          onClick={onToggle}
+          className="w-full flex items-start justify-between gap-3 text-left"
+        >
+          <div className="flex items-start gap-3 min-w-0">
+            <div className="size-10 rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-white flex-shrink-0">
+              <Brain className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <CardTitle className="text-base flex items-center gap-2">
+                Contexte IA
+                {isConfigured ? (
+                  <span className="text-[10px] uppercase font-medium text-emerald-700 bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-400 px-1.5 py-0.5 rounded">Configuré</span>
+                ) : (
+                  <span className="text-[10px] uppercase font-medium text-amber-700 bg-amber-100 dark:bg-amber-950 dark:text-amber-400 px-1.5 py-0.5 rounded">À configurer</span>
+                )}
+              </CardTitle>
+              <CardDescription className="text-xs mt-0.5">
+                Ce que l'IA sait de ton activité. Renseigne-le une seule fois — utilisé pour chaque génération.
+                {!isAdmin && <span className="block mt-1 text-muted-foreground">Lecture seule (admin uniquement)</span>}
+              </CardDescription>
+            </div>
+          </div>
+          <span className="text-xs text-muted-foreground flex-shrink-0">{open ? "Replier" : "Déplier"} ↓</span>
+        </button>
+      </CardHeader>
+
+      {open && (
+        <CardContent className="space-y-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Activité (1 ligne)</Label>
+            <Input
+              value={activity}
+              onChange={(e) => setActivity(e.target.value)}
+              placeholder="Ex : Agence de création de sites web pour cabinets médicaux"
+              disabled={!isAdmin}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs">Description détaillée de votre activité</Label>
+            <Textarea
+              value={brief}
+              onChange={(e) => setBrief(e.target.value)}
+              rows={4}
+              placeholder="Décrivez en 4-5 phrases ce que vous faites, votre méthode, vos résultats typiques. L'IA s'en servira pour rédiger des emails crédibles."
+              disabled={!isAdmin}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs">Client cible / ICP (Ideal Customer Profile)</Label>
+            <Textarea
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+              rows={2}
+              placeholder="Ex : Médecins libéraux (généralistes, kinés, ostéopathes) installés en cabinet, sans site web ou avec un site obsolète."
+              disabled={!isAdmin}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs">Propositions de valeur (1 par ligne)</Label>
+            <Textarea
+              value={props}
+              onChange={(e) => setProps(e.target.value)}
+              rows={3}
+              placeholder={"- Livraison en 14 jours\n- Site sur mesure, pas un template\n- Optimisé pour la prise de RDV en ligne"}
+              disabled={!isAdmin}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs">Ton par défaut</Label>
+            <select
+              value={tone}
+              onChange={(e) => setTone(e.target.value)}
+              className="w-full h-9 rounded-md border bg-background px-3 text-sm"
+              disabled={!isAdmin}
+            >
+              <option value="professionnel">Professionnel</option>
+              <option value="chaleureux">Chaleureux</option>
+              <option value="direct">Direct</option>
+              <option value="consultatif">Consultatif (expert)</option>
+            </select>
+          </div>
+
+          {isAdmin && (
+            <Button onClick={save} disabled={saving} size="sm">
+              <Save className="h-3.5 w-3.5 mr-1" /> {saving ? "Enregistrement…" : "Enregistrer le contexte"}
+            </Button>
+          )}
+        </CardContent>
+      )}
+    </Card>
+  );
+}
+
+// ─── Dialog : générer un template via IA ───
+function AIGenerateDialog({
+  onClose,
+  onGenerated,
+  onOpenContext,
+}: {
+  onClose: () => void;
+  onGenerated: (result: { name: string; subject: string; body: string; category: string }) => void;
+  onOpenContext: () => void;
+}) {
+  const [objective, setObjective] = useState("");
+  const [tone, setTone] = useState("");
+  const [length, setLength] = useState("standard");
+  const [notes, setNotes] = useState("");
+  const [generating, setGenerating] = useState(false);
+
+  // Check si contexte configuré
+  const { data: agency } = useQuery({
+    queryKey: ["agency-settings-ai-check"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("agency_settings")
+        .select("business_brief, target_client")
+        .eq("id", true)
+        .maybeSingle();
+      return data;
+    },
+  });
+
+  const contextConfigured = !!(agency?.business_brief && agency?.target_client);
+
+  const generate = async () => {
+    if (!objective.trim()) {
+      toast.error("Décris l'objectif de l'email");
+      return;
+    }
+    setGenerating(true);
+    const { data, error } = await supabase.functions.invoke("template-generate", {
+      body: {
+        objective: objective.trim(),
+        tone: tone || undefined,
+        length,
+        extra_notes: notes.trim() || undefined,
+      },
+    });
+    setGenerating(false);
+    if (error || data?.error) {
+      toast.error(data?.error || error?.message || "Génération échouée");
+      if (data?.hint) toast.info(data.hint, { duration: 10000 });
+      return;
+    }
+    toast.success(`Template généré (${data.tokens_in}+${data.tokens_out} tokens, ${data.duration_ms}ms)`);
+    onGenerated(data);
+  };
+
+  const SUGGESTIONS = [
+    "Prise de contact à froid avec un prospect qui ne nous connaît pas",
+    "Relancer un prospect qui n'a pas répondu à mon premier email (après 4 jours)",
+    "Proposer un appel découverte de 15 minutes",
+    "Remercier un prospect après un appel et envoyer la suite",
+    "Réveiller un prospect froid (>30 jours sans contact)",
+  ];
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Wand2 className="h-5 w-5 text-violet-600" />
+            Générer un template avec l'IA
+          </DialogTitle>
+          <DialogDescription>
+            Décris l'objectif et le contexte. L'IA s'appuiera sur le contexte de ton agence pour rédiger un email pro.
+          </DialogDescription>
+        </DialogHeader>
+
+        {!contextConfigured && (
+          <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 p-3 text-xs">
+            <p className="font-medium text-amber-900 dark:text-amber-200 mb-1">⚠ Contexte IA pas encore configuré</p>
+            <p className="text-amber-800 dark:text-amber-300 mb-2">
+              Sans contexte, l'IA va générer des templates génériques. Renseigne ton activité, ton client cible et tes propositions de valeur pour avoir des résultats vraiment pertinents.
+            </p>
+            <Button size="sm" variant="outline" onClick={onOpenContext}>
+              Configurer maintenant
+            </Button>
+          </div>
+        )}
+
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>Objectif de l'email *</Label>
+            <Textarea
+              value={objective}
+              onChange={(e) => setObjective(e.target.value)}
+              rows={3}
+              placeholder="Décris en 1-2 phrases ce que tu veux obtenir avec cet email."
+            />
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {SUGGESTIONS.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setObjective(s)}
+                  className="text-[10px] px-2 py-1 rounded border bg-muted/40 hover:bg-muted"
+                >
+                  {s.length > 40 ? s.slice(0, 40) + "…" : s}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Ton (optionnel)</Label>
+              <select
+                value={tone}
+                onChange={(e) => setTone(e.target.value)}
+                className="w-full h-9 rounded-md border bg-background px-3 text-sm"
+              >
+                <option value="">Défaut de l'agence</option>
+                <option value="professionnel">Professionnel</option>
+                <option value="chaleureux">Chaleureux</option>
+                <option value="direct">Direct</option>
+                <option value="consultatif">Consultatif (expert)</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Longueur</Label>
+              <select
+                value={length}
+                onChange={(e) => setLength(e.target.value)}
+                className="w-full h-9 rounded-md border bg-background px-3 text-sm"
+              >
+                <option value="court">Court (80-120 mots)</option>
+                <option value="standard">Standard (120-180 mots)</option>
+                <option value="long">Long (180-280 mots)</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs">Contraintes ou détails supplémentaires (optionnel)</Label>
+            <Textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              placeholder="Ex : Ne pas mentionner le prix. Insister sur la rapidité de livraison."
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Annuler</Button>
+          <Button onClick={generate} disabled={generating} className="bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white">
+            {generating ? (
+              <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Génération…</>
+            ) : (
+              <><Wand2 className="h-4 w-4 mr-1.5" /> Générer</>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function TemplateEditor({
   template,
+  seed,
   onClose,
   onSaved,
 }: {
   template: Template | null;
+  seed?: { name: string; subject: string; body: string; category: string } | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const { user } = useAuth();
-  const [name, setName] = useState(template?.name || "");
-  const [subject, setSubject] = useState(template?.subject || "");
-  const [body, setBody] = useState(template?.body || "");
-  const [category, setCategory] = useState(template?.category || "prospection");
+  const [name, setName] = useState(template?.name || seed?.name || "");
+  const [subject, setSubject] = useState(template?.subject || seed?.subject || "");
+  const [body, setBody] = useState(template?.body || seed?.body || "");
+  const [category, setCategory] = useState(template?.category || seed?.category || "prospection");
   const [isShared, setIsShared] = useState(template?.is_shared || false);
   const [saving, setSaving] = useState(false);
 

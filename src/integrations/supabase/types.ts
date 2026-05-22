@@ -16,25 +16,82 @@ export type Database = {
     Tables: {
       agency_settings: {
         Row: {
+          activity: string | null
+          business_brief: string | null
+          default_tone: string | null
           id: boolean
           logo_url: string | null
           name: string
+          target_client: string | null
           updated_at: string
+          value_props: string | null
           website_url: string | null
         }
         Insert: {
+          activity?: string | null
+          business_brief?: string | null
+          default_tone?: string | null
           id?: boolean
           logo_url?: string | null
           name?: string
+          target_client?: string | null
           updated_at?: string
+          value_props?: string | null
           website_url?: string | null
         }
         Update: {
+          activity?: string | null
+          business_brief?: string | null
+          default_tone?: string | null
           id?: boolean
           logo_url?: string | null
           name?: string
+          target_client?: string | null
           updated_at?: string
+          value_props?: string | null
           website_url?: string | null
+        }
+        Relationships: []
+      }
+      ai_generations: {
+        Row: {
+          created_at: string
+          duration_ms: number | null
+          error: string | null
+          id: string
+          input: Json
+          kind: string
+          model: string | null
+          output: Json | null
+          owner_id: string
+          tokens_in: number | null
+          tokens_out: number | null
+        }
+        Insert: {
+          created_at?: string
+          duration_ms?: number | null
+          error?: string | null
+          id?: string
+          input: Json
+          kind: string
+          model?: string | null
+          output?: Json | null
+          owner_id: string
+          tokens_in?: number | null
+          tokens_out?: number | null
+        }
+        Update: {
+          created_at?: string
+          duration_ms?: number | null
+          error?: string | null
+          id?: string
+          input?: Json
+          kind?: string
+          model?: string | null
+          output?: Json | null
+          owner_id?: string
+          tokens_in?: number | null
+          tokens_out?: number | null
         }
         Relationships: []
       }
@@ -636,6 +693,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      call_edge_function: { Args: { fn_name: string }; Returns: number }
       find_prospect_by_email: {
         Args: { p_email: string; p_owner_id: string }
         Returns: string
