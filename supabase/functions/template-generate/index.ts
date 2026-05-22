@@ -2,20 +2,14 @@
  * ─── Template Generate ───
  *
  * Génère un template d'email pro à partir d'un brief utilisateur
- * et du contexte business de l'agence (agency_settings.business_brief, …).
+ * et du contexte business de l'agence.
  *
- * Appelle l'API Anthropic (Claude) avec tool-use pour garantir une sortie
- * structurée { name, subject, body, category }.
+ * Provider auto-détecté :
+ *   1. ANTHROPIC_API_KEY → Claude (qualité top, payant)
+ *   2. GEMINI_API_KEY    → Gemini 2.0 Flash (gratuit, 1500 req/j)
+ *   3. (à défaut)        → erreur explicative
  *
- * POST body : {
- *   objective:     string  // "Prendre un RDV avec un prospect froid", "Relancer après silence", ...
- *   tone?:         string  // 'professionnel' | 'chaleureux' | 'direct' | 'consultatif'
- *   length?:       string  // 'court' | 'standard' | 'long'  (par défaut: standard)
- *   variables?:    string[]// ['prenom', 'entreprise', ...]
- *   extra_notes?:  string  // contraintes spécifiques de l'utilisateur
- * }
- *
- * Réponse : { name, subject, body, category, tokens_in, tokens_out }
+ * Sortie structurée garantie via tool-use (Anthropic) ou responseSchema (Gemini).
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
@@ -37,7 +31,9 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY")!;
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
-const MODEL = Deno.env.get("ANTHROPIC_MODEL") ?? "claude-sonnet-4-5-20250929";
+const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+const ANTHROPIC_MODEL = Deno.env.get("ANTHROPIC_MODEL") ?? "claude-sonnet-4-5-20250929";
+const GEMINI_MODEL = Deno.env.get("GEMINI_MODEL") ?? "gemini-2.0-flash";
 
 const admin = createClient(SUPABASE_URL, SERVICE_KEY);
 
@@ -75,13 +71,9 @@ ${ctx.valueProps ? `\nPropositions de valeur :\n${ctx.valueProps}` : ""}
 5. JAMAIS de superlatifs ("le meilleur", "incroyable", "révolutionnaire", "leader").
 6. JAMAIS de promesses non chiffrées : si tu cites un résultat, fais-le sobrement.
 7. Ton du français : tu vouvoies systématiquement.
-8. Tu utilises les variables {{prenom}}, {{nom}}, {{entreprise}}, {{email}} — pas d'autres.
-
-═══ FORMAT DE SORTIE ═══
-Tu DOIS utiliser l'outil \`save_template\` pour retourner le résultat. Pas de texte libre.`;
+8. Tu utilises les variables {{prenom}}, {{nom}}, {{entreprise}}, {{email}} — pas d'autres.`;
 }
 
-// ─── User message ───
 function buildUserPrompt(input: {
   objective: string;
   tone?: string;
@@ -107,24 +99,105 @@ Choisis aussi :
 - Une \`category\` parmi : prospection, relance, rdv, remerciement, autre`;
 }
 
-// ─── Tool definition pour structurer la sortie ───
-const TOOL_DEF = {
-  name: "save_template",
-  description: "Enregistre le template d'email généré.",
-  input_schema: {
-    type: "object" as const,
-    properties: {
-      name:     { type: "string", description: "Nom interne court (max 60 chars)" },
-      subject:  { type: "string", description: "Objet de l'email (max 60 chars)" },
-      body:     { type: "string", description: "Corps complet de l'email" },
-      category: {
-        type: "string",
-        enum: ["prospection", "relance", "rdv", "remerciement", "autre"],
+// ─── Provider Anthropic (Claude) ───
+async function generateWithAnthropic(systemPrompt: string, userPrompt: string): Promise<{
+  result: any; tokens_in?: number; tokens_out?: number; model: string;
+}> {
+  const TOOL_DEF = {
+    name: "save_template",
+    description: "Enregistre le template d'email généré.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        name:     { type: "string", description: "Nom interne court (max 60 chars)" },
+        subject:  { type: "string", description: "Objet de l'email (max 60 chars)" },
+        body:     { type: "string", description: "Corps complet de l'email" },
+        category: { type: "string", enum: ["prospection", "relance", "rdv", "remerciement", "autre"] },
       },
+      required: ["name", "subject", "body", "category"],
     },
-    required: ["name", "subject", "body", "category"],
-  },
-};
+  };
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": ANTHROPIC_API_KEY!,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: ANTHROPIC_MODEL,
+      max_tokens: 1500,
+      system: systemPrompt,
+      tools: [TOOL_DEF],
+      tool_choice: { type: "tool", name: "save_template" },
+      messages: [{ role: "user", content: userPrompt }],
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Anthropic ${res.status}: ${await res.text()}`);
+  }
+  const completion = await res.json();
+  const toolUse = (completion.content || []).find((c: any) => c.type === "tool_use");
+  if (!toolUse?.input) throw new Error("No tool_use in Anthropic response");
+  return {
+    result: toolUse.input,
+    tokens_in: completion.usage?.input_tokens,
+    tokens_out: completion.usage?.output_tokens,
+    model: ANTHROPIC_MODEL,
+  };
+}
+
+// ─── Provider Google Gemini (gratuit) ───
+async function generateWithGemini(systemPrompt: string, userPrompt: string): Promise<{
+  result: any; tokens_in?: number; tokens_out?: number; model: string;
+}> {
+  // Gemini : structured output via responseSchema
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 1500,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "object",
+          properties: {
+            name:     { type: "string" },
+            subject:  { type: "string" },
+            body:     { type: "string" },
+            category: { type: "string", enum: ["prospection", "relance", "rdv", "remerciement", "autre"] },
+          },
+          required: ["name", "subject", "body", "category"],
+        },
+      },
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Gemini ${res.status}: ${await res.text()}`);
+  }
+  const completion = await res.json();
+  const text = completion.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error("No text in Gemini response");
+  let parsed: any;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error(`Gemini renvoyé du non-JSON : ${text.slice(0, 200)}`);
+  }
+  return {
+    result: parsed,
+    tokens_in: completion.usageMetadata?.promptTokenCount,
+    tokens_out: completion.usageMetadata?.candidatesTokenCount,
+    model: GEMINI_MODEL,
+  };
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
@@ -134,14 +207,13 @@ Deno.serve(async (req) => {
   let userId: string | null = null;
 
   try {
-    if (!ANTHROPIC_API_KEY) {
+    if (!ANTHROPIC_API_KEY && !GEMINI_API_KEY) {
       return json({
-        error: "ANTHROPIC_API_KEY non configurée dans les secrets Supabase",
-        hint: "Va sur https://console.anthropic.com/settings/keys, crée une clé, puis ajoute-la dans Supabase → Edge Functions → Secrets sous le nom ANTHROPIC_API_KEY",
+        error: "Aucune clé IA configurée",
+        hint: "Ajoute soit GEMINI_API_KEY (gratuit, https://aistudio.google.com/app/apikey) soit ANTHROPIC_API_KEY (payant, https://console.anthropic.com/settings/keys) dans Supabase → Edge Functions → Secrets",
       }, 500);
     }
 
-    // Auth user
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return json({ error: "Non autorisé" }, 401);
     const userClient = createClient(SUPABASE_URL, ANON, {
@@ -156,7 +228,6 @@ Deno.serve(async (req) => {
       return json({ error: "Champ 'objective' requis" }, 400);
     }
 
-    // ─── Récupère contexte agence ───
     const { data: agency } = await admin
       .from("agency_settings")
       .select("name, activity, business_brief, target_client, value_props, default_tone")
@@ -177,83 +248,51 @@ Deno.serve(async (req) => {
       extra_notes: input.extra_notes,
     });
 
-    // ─── Appel Anthropic ───
-    const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 1500,
-        system: systemPrompt,
-        tools: [TOOL_DEF],
-        tool_choice: { type: "tool", name: "save_template" },
-        messages: [{ role: "user", content: userPrompt }],
-      }),
-    });
-
-    if (!anthropicRes.ok) {
-      const errBody = await anthropicRes.text();
-      console.error("[template-generate] Anthropic API error", anthropicRes.status, errBody);
+    // ─── Choix du provider ───
+    let providerResult;
+    let providerName: string;
+    try {
+      if (ANTHROPIC_API_KEY) {
+        providerName = "anthropic";
+        providerResult = await generateWithAnthropic(systemPrompt, userPrompt);
+      } else {
+        providerName = "gemini";
+        providerResult = await generateWithGemini(systemPrompt, userPrompt);
+      }
+    } catch (e) {
+      console.error("[template-generate] Provider error", e);
       await admin.from("ai_generations").insert({
         owner_id: userId,
         kind: "template",
         input,
-        error: `Anthropic ${anthropicRes.status}: ${errBody}`,
+        error: String(e),
         duration_ms: Date.now() - startTime,
       });
-      return json({
-        error: "Génération IA échouée",
-        details: errBody.slice(0, 500),
-      }, 502);
+      return json({ error: "Génération IA échouée", details: String(e).slice(0, 500) }, 502);
     }
 
-    const completion = await anthropicRes.json();
-    // completion.content : Array<{type:'tool_use', name:'save_template', input:{...}}>
-    const toolUse = (completion.content || []).find((c: any) => c.type === "tool_use");
-    if (!toolUse || !toolUse.input) {
-      console.error("[template-generate] No tool_use in response", completion);
-      await admin.from("ai_generations").insert({
-        owner_id: userId,
-        kind: "template",
-        input,
-        output: completion,
-        error: "No tool_use block in response",
-        duration_ms: Date.now() - startTime,
-        model: MODEL,
-      });
-      return json({ error: "Réponse IA invalide (pas de tool_use)" }, 502);
-    }
-
-    const result = toolUse.input as { name: string; subject: string; body: string; category: string };
-
-    // Validation côté serveur
+    const result = providerResult.result as { name: string; subject: string; body: string; category: string };
     if (!result.name || !result.subject || !result.body) {
-      return json({ error: "Réponse IA incomplète" }, 502);
+      return json({ error: "Réponse IA incomplète", raw: result }, 502);
     }
-    // Trim subject si trop long
     if (result.subject.length > 100) result.subject = result.subject.slice(0, 100);
 
-    // ─── Log audit ───
-    const usage = completion.usage || {};
     await admin.from("ai_generations").insert({
       owner_id: userId,
       kind: "template",
       input,
       output: result,
-      model: MODEL,
-      tokens_in: usage.input_tokens || null,
-      tokens_out: usage.output_tokens || null,
+      model: `${providerName}:${providerResult.model}`,
+      tokens_in: providerResult.tokens_in || null,
+      tokens_out: providerResult.tokens_out || null,
       duration_ms: Date.now() - startTime,
     });
 
     return json({
       ...result,
-      tokens_in: usage.input_tokens,
-      tokens_out: usage.output_tokens,
+      provider: providerName,
+      tokens_in: providerResult.tokens_in,
+      tokens_out: providerResult.tokens_out,
       duration_ms: Date.now() - startTime,
     });
   } catch (e) {

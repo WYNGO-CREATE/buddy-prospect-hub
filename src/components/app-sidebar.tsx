@@ -6,7 +6,6 @@ import {
   CalendarClock,
   UserCog,
   LogOut,
-  Mail,
   Kanban,
   Snowflake,
   Activity,
@@ -102,7 +101,6 @@ export function AppSidebar() {
     { title: "Prospects froids", url: "/froids", icon: Snowflake, badge: coldCount },
     { title: "Templates", url: "/templates", icon: Sparkles, badge: 0 },
     { title: "Workflows", url: "/workflows", icon: Workflow, badge: 0 },
-    { title: "Modèles d'e-mails", url: "/mails", icon: Mail, badge: 0 },
     { title: "Mon profil", url: "/profil", icon: User, badge: 0 },
   ];
   if (role === "admin") {

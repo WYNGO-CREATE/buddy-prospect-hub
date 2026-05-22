@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { User, KeyRound } from "lucide-react";
 import { GmailConnectCard } from "@/components/gmail-connect-card";
+import { SignaturePreviewCard } from "@/components/signature-preview-card";
 
 export const Route = createFileRoute("/_authenticated/profil")({
   component: ProfilPage,
@@ -114,6 +115,8 @@ function ProfilPage() {
       </Card>
 
       <GmailConnectCard />
+
+      <SignaturePreviewCard />
 
       <Card>
         <CardHeader>

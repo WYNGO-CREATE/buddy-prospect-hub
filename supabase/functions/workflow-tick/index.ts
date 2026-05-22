@@ -11,6 +11,12 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import {
+  buildEmailHtml,
+  buildEmailText,
+  buildRawMultipartEmail,
+  type EmailSignatureData,
+} from "../_shared/email-html.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -88,22 +94,7 @@ async function getFreshAccessToken(account: any): Promise<string> {
   return j.access_token;
 }
 
-function encodeBase64Url(str: string): string {
-  return btoa(unescape(encodeURIComponent(str)))
-    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function buildRawEmail(from: string, to: string, subject: string, body: string): string {
-  const headers = [
-    `From: ${from}`,
-    `To: ${to}`,
-    `Subject: =?UTF-8?B?${btoa(unescape(encodeURIComponent(subject)))}?=`,
-    "MIME-Version: 1.0",
-    `Content-Type: text/plain; charset="UTF-8"`,
-    "Content-Transfer-Encoding: 7bit",
-  ];
-  return encodeBase64Url(headers.join("\r\n") + "\r\n\r\n" + body);
-}
+// (builder de mail importé depuis _shared/email-html.ts)
 
 // ─── Exécution d'une étape pour un run donné ───
 async function executeStep(run: any, step: any, prospect: any, ownerProfile: any): Promise<{ ok: boolean; detail: string }> {
@@ -147,7 +138,29 @@ async function executeStep(run: any, step: any, prospect: any, ownerProfile: any
     if (!account) return { ok: false, detail: "Aucun compte Gmail connecté pour ce user" };
 
     const accessToken = await getFreshAccessToken(account);
-    const raw = buildRawEmail(account.email, prospect.email, subject, body);
+
+    // ─── Signature à partir profile + agency ───
+    const [{ data: profile }, { data: agency }] = await Promise.all([
+      admin.from("profiles").select("full_name, email, phone").eq("id", run.owner_id).maybeSingle(),
+      admin.from("agency_settings").select("name, website_url, logo_url").eq("id", true).maybeSingle(),
+    ]);
+    const sigData: EmailSignatureData = {
+      senderName:    profile?.full_name,
+      senderEmail:   profile?.email || account.email,
+      senderPhone:   profile?.phone,
+      agencyName:    agency?.name || "Wyngo",
+      agencyWebsite: agency?.website_url,
+      agencyLogoUrl: agency?.logo_url,
+    };
+    const htmlBody = buildEmailHtml(body, sigData);
+    const textBody = buildEmailText(body, sigData);
+    const raw = buildRawMultipartEmail({
+      from: account.email,
+      to: prospect.email,
+      subject,
+      textBody,
+      htmlBody,
+    });
 
     const sendRes = await fetch(
       "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",

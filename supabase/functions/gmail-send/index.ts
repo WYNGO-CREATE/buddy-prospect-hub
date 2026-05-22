@@ -1,12 +1,18 @@
 /**
  * ─── Gmail Send ───
  *
- * Envoie un email depuis le compte Gmail connecté de l'utilisateur.
- *
- * POST body : { prospect_id: string, to: string, subject: string, body: string, in_reply_to?: string, thread_id?: string }
+ * Envoie un email HTML+texte multipart depuis le compte Gmail connecté de l'utilisateur,
+ * avec signature professionnelle et logo (wordmark Wyngo par défaut, ou logo custom
+ * défini dans agency_settings.logo_url).
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import {
+  buildEmailHtml,
+  buildEmailText,
+  buildRawMultipartEmail,
+  type EmailSignatureData,
+} from "../_shared/email-html.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -36,35 +42,6 @@ async function refreshAccessToken(refresh_token: string) {
   return await res.json();
 }
 
-function encodeBase64Url(str: string): string {
-  return btoa(unescape(encodeURIComponent(str)))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
-function buildRawEmail(opts: {
-  from: string;
-  to: string;
-  subject: string;
-  body: string;
-  in_reply_to?: string;
-}): string {
-  const headers = [
-    `From: ${opts.from}`,
-    `To: ${opts.to}`,
-    `Subject: =?UTF-8?B?${btoa(unescape(encodeURIComponent(opts.subject)))}?=`,
-    "MIME-Version: 1.0",
-    `Content-Type: text/plain; charset="UTF-8"`,
-    "Content-Transfer-Encoding: 7bit",
-  ];
-  if (opts.in_reply_to) {
-    headers.push(`In-Reply-To: ${opts.in_reply_to}`);
-    headers.push(`References: ${opts.in_reply_to}`);
-  }
-  return encodeBase64Url(headers.join("\r\n") + "\r\n\r\n" + opts.body);
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -89,7 +66,7 @@ Deno.serve(async (req) => {
 
     const admin = createClient(SUPABASE_URL, SERVICE_KEY);
 
-    // Récupère le compte Gmail de l'user
+    // Compte Gmail
     const { data: account, error: accErr } = await admin
       .from("gmail_accounts")
       .select("*")
@@ -114,16 +91,33 @@ Deno.serve(async (req) => {
         .eq("id", account.id);
     }
 
-    // Build raw email
-    const raw = buildRawEmail({
+    // ─── Construit la signature à partir du profil + agency_settings ───
+    const [{ data: profile }, { data: agency }] = await Promise.all([
+      admin.from("profiles").select("full_name, email, phone").eq("id", userId).maybeSingle(),
+      admin.from("agency_settings").select("name, website_url, logo_url").eq("id", true).maybeSingle(),
+    ]);
+
+    const sigData: EmailSignatureData = {
+      senderName:    profile?.full_name,
+      senderEmail:   profile?.email || account.email,
+      senderPhone:   profile?.phone,
+      agencyName:    agency?.name || "Wyngo",
+      agencyWebsite: agency?.website_url,
+      agencyLogoUrl: agency?.logo_url,
+    };
+
+    const htmlBody = buildEmailHtml(body, sigData);
+    const textBody = buildEmailText(body, sigData);
+
+    const raw = buildRawMultipartEmail({
       from: account.email,
       to,
       subject: subject || "",
-      body,
+      textBody,
+      htmlBody,
       in_reply_to,
     });
 
-    // Send via Gmail API
     const sendRes = await fetch(
       "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
       {
@@ -138,12 +132,13 @@ Deno.serve(async (req) => {
 
     if (!sendRes.ok) {
       const err = await sendRes.text();
+      console.error("[gmail-send] Gmail API error", sendRes.status, err);
       return json({ error: "Gmail send failed", details: err }, 400);
     }
 
     const sent = await sendRes.json();
 
-    // Log dans messages
+    // Log dans messages — on stocke le body texte original (pas le HTML)
     const { error: insertErr } = await admin.from("messages").insert({
       prospect_id,
       owner_id: userId,
@@ -170,6 +165,7 @@ Deno.serve(async (req) => {
 
     return json({ success: true, message_id: sent.id, thread_id: sent.threadId });
   } catch (e) {
+    console.error("[gmail-send] uncaught", e);
     return json({ error: String(e) }, 500);
   }
 });
