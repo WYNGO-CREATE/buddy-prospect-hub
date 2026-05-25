@@ -12,7 +12,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { ArrowLeft, PhoneCall, CalendarClock, History, Check, MessageSquare, Trash2, UserCog } from "lucide-react";
+import { ArrowLeft, PhoneCall, CalendarClock, History, Check, MessageSquare, Trash2, UserCog, Headphones } from "lucide-react";
+import { CallModeDrawer } from "@/components/call-mode-drawer";
 import { PROSPECT_STATUSES, STATUS_LABELS, STATUS_VARIANTS, EVENT_LABELS, type ProspectStatus } from "@/lib/crm";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -32,6 +33,7 @@ function ProspectDetail() {
   const [callOpen, setCallOpen] = useState(false);
   const [followOpen, setFollowOpen] = useState(false);
   const [comment, setComment] = useState("");
+  const [callDrawerOpen, setCallDrawerOpen] = useState(false);
 
   const { data: prospect, isLoading } = useQuery({
     queryKey: ["prospect", id],
@@ -244,6 +246,17 @@ function ProspectDetail() {
           </div>
         </div>
         <div className="flex gap-2 items-center">
+          {/* Mode appel : drawer latéral avec scripts + banque d'objections,
+              variables remplies à la volée avec les infos du prospect. */}
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => setCallDrawerOpen(true)}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            <Headphones className="h-4 w-4 mr-1.5" />
+            Mode appel
+          </Button>
           {role === "admin" && (
             <Select value={prospect.owner_id} onValueChange={(v) => reassign.mutate(v)}>
               <SelectTrigger className="w-[180px]">
@@ -546,6 +559,19 @@ function ProspectDetail() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Drawer Mode appel — variables remplies avec ce prospect */}
+      <CallModeDrawer
+        prospect={prospect ? {
+          id: prospect.id,
+          first_name: prospect.first_name,
+          last_name: prospect.last_name,
+          company: prospect.company,
+          email: prospect.email,
+        } : null}
+        open={callDrawerOpen}
+        onOpenChange={setCallDrawerOpen}
+      />
     </div>
   );
 }

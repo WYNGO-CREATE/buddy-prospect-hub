@@ -136,6 +136,45 @@ export type Database = {
           },
         ]
       }
+      call_scripts: {
+        Row: {
+          category: string | null
+          content: string
+          created_at: string
+          id: string
+          is_shared: boolean
+          kind: Database["public"]["Enums"]["call_script_kind"]
+          owner_id: string
+          position: number
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string | null
+          content: string
+          created_at?: string
+          id?: string
+          is_shared?: boolean
+          kind: Database["public"]["Enums"]["call_script_kind"]
+          owner_id: string
+          position?: number
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string | null
+          content?: string
+          created_at?: string
+          id?: string
+          is_shared?: boolean
+          kind?: Database["public"]["Enums"]["call_script_kind"]
+          owner_id?: string
+          position?: number
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       email_templates: {
         Row: {
           body: string
@@ -760,6 +799,7 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "collaborator"
+      call_script_kind: "script" | "objection"
       message_channel: "email" | "linkedin" | "call" | "whatsapp" | "note"
       message_direction: "inbound" | "outbound"
       prospect_status:
@@ -905,6 +945,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "collaborator"],
+      call_script_kind: ["script", "objection"],
       message_channel: ["email", "linkedin", "call", "whatsapp", "note"],
       message_direction: ["inbound", "outbound"],
       prospect_status: [

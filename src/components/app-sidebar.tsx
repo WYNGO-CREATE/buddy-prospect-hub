@@ -13,6 +13,7 @@ import {
   Inbox,
   Sparkles,
   Workflow,
+  Headphones,
 } from "lucide-react";
 import {
   Sidebar,
@@ -101,6 +102,7 @@ export function AppSidebar() {
     { title: "Prospects froids", url: "/froids", icon: Snowflake, badge: coldCount },
     { title: "Templates", url: "/templates", icon: Sparkles, badge: 0 },
     { title: "Workflows", url: "/workflows", icon: Workflow, badge: 0 },
+    { title: "Scripts d'appel", url: "/scripts", icon: Headphones, badge: 0 },
     { title: "Mon profil", url: "/profil", icon: User, badge: 0 },
   ];
   if (role === "admin") {
