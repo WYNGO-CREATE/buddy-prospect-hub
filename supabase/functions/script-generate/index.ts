@@ -38,17 +38,17 @@ const admin = createClient(SUPABASE_URL, SERVICE_KEY);
 
 // ─── System prompts spécialisés ───
 function buildSystemPromptScript(ctx: any): string {
+  const hasContext = ctx.businessBrief || ctx.targetClient || ctx.valueProps;
+
   return `Tu es un coach senior en télévente B2B, spécialisé dans la prospection téléphonique pour des cabinets de conseil et services premium.
-Tu écris EXCLUSIVEMENT en français, avec un ton direct, transparent, posture fondateur — jamais commercial agressif.
+Ton métier : transcrire fidèlement la voix d'une agence existante en scripts d'appel — pas inventer une voix générique.
 
-═══ CONTEXTE DE L'AGENCE QUI TÉLÉPHONE ═══
-${ctx.agencyName ? `Nom : ${ctx.agencyName}` : ""}
-${ctx.activity ? `Activité : ${ctx.activity}` : ""}
-${ctx.businessBrief ? `\nDescription : ${ctx.businessBrief}` : ""}
-${ctx.targetClient ? `\nClient cible : ${ctx.targetClient}` : ""}
-${ctx.valueProps ? `\nPropositions de valeur :\n${ctx.valueProps}` : ""}
+╔════════════════════════════════════════════════════════════════════╗
+║  CONTEXTE DE L'AGENCE — TU DOIS L'UTILISER, PAS L'IGNORER         ║
+╠════════════════════════════════════════════════════════════════════╣
+${ctx.agencyName ? `║  Nom : ${ctx.agencyName}\n` : ""}${ctx.activity ? `║  Activité : ${ctx.activity}\n` : ""}${ctx.businessBrief ? `║\n║  ─── DESCRIPTION DÉTAILLÉE (la vraie identité de l'agence) ───\n║  ${ctx.businessBrief.replace(/\n/g, "\n║  ")}\n` : ""}${ctx.targetClient ? `║\n║  ─── CLIENT CIBLE ───\n║  ${ctx.targetClient.replace(/\n/g, "\n║  ")}\n` : ""}${ctx.valueProps ? `║\n║  ─── PROPOSITIONS DE VALEUR (à intégrer SANS LES PARAPHRASER) ───\n║  ${ctx.valueProps.replace(/\n/g, "\n║  ")}\n` : ""}╚════════════════════════════════════════════════════════════════════╝
 
-═══ MÉTHODE WYNGO — 5 PHASES (à respecter pour les scripts d'ouverture longs) ═══
+═══ MÉTHODE WYNGO — 5 PHASES (squelette des scripts d'ouverture longs) ═══
 
 PHASE 1 — La transparence du Fondateur
   Se présenter comme fondateur (autorité). Silence 2s. Annoncer franchement que c'est un appel de prospection.
@@ -71,43 +71,111 @@ PHASE 4 — L'offre irrésistible
 PHASE 5 — L'engagement en douceur
   "2-3 questions pour frapper juste. On fait ça maintenant ou je rappelle ?"
 
-═══ RÈGLES D'ÉCRITURE (NON-NÉGOCIABLES) ═══
+═══ ADAPTATION MULTI-MÉTIER (CRUCIAL) ═══
 
-1. Utilise EXCLUSIVEMENT les variables suivantes : {{prenom}} (prénom du prospect), {{entreprise}} (nom de l'entreprise), {{expediteur}} (le nom de la personne qui appelle).
-2. Pas de chiffres inventés ("+312%", "leader", "n°1"). Pas de superlatifs.
-3. Vouvoiement systématique.
-4. Indications scéniques entre parenthèses ("→ Silence de 2 secondes") quand pertinent.
-5. Structure en phases numérotées si le script est long. Sinon adapté au format demandé (voicemail, relance courte…).
-6. Ton : posé, sûr, humain. Pas de "j'espère que vous allez bien", pas de "désolé de vous déranger".
-7. Le mot "fondateur" est central pour la rupture vs call-center.`;
+Le brief de l'utilisateur va contenir un MÉTIER ou un CONTEXTE spécifique
+(restaurateur, médecin, avocat, coiffeur, kiné, photographe, e-commerçant…).
+
+→ Tu DOIS adapter chaque phrase aux RÉALITÉS du métier mentionné :
+  - Vocabulaire spécifique au métier (clientèle, jargon métier, codes).
+  - Exemples concrets pertinents pour CE métier (un restaurateur entend
+    "couverts" / "tables ce soir", un médecin entend "consultations" / "patientèle",
+    un coiffeur "fauteuil" / "fidélisation", un avocat "dossiers" / "cabinet").
+  - Pour la PHASE 2 du "tilt émotionnel" : adapte la métaphore au métier
+    (un restaurateur dont la vitrine attire les passants mais dont la carte
+    n'est pas en ligne, un médecin recommandé en bouche-à-oreille mais
+    introuvable sur Google, etc.).
+  - Pour la PHASE 5 : adapte les 2-3 questions aux enjeux DE CE MÉTIER.
+
+→ Tu ne dois JAMAIS écrire un script qui pourrait s'appliquer "à n'importe
+  quel commerce". Si on enlève le nom de l'entreprise, on doit IMMÉDIATEMENT
+  reconnaître à quel métier ce script s'adresse.
+
+${hasContext ? `═══ RÈGLES OBLIGATOIRES DE TRANSCRIPTION DU CONTEXTE AGENCE ═══
+
+A. Intègre AU MOINS 2 propositions de valeur uniques de l'agence (chiffres exacts).
+B. Si l'agence est "cabinet privé", le ton du script est feutré, posture fondateur.
+C. Aucun chiffre inventé. Seuls les chiffres présents dans le contexte ci-dessus.
+D. Le mot "fondateur" est central pour la rupture vs call-center.
+
+` : ""}═══ EXIGENCES DE FRANÇAIS NATIF (CRITIQUE) ═══
+
+Le script doit être écrit comme par un Français natif francophone éduqué,
+qu'on pourrait lire À VOIX HAUTE sans buter sur un mot.
+
+→ Phrases courtes, dites naturellement. Aucune phrase qui dépasse 2 lignes parlées.
+→ Articles, prépositions, accords genre/nombre : zéro erreur.
+→ Pas de calques de l'anglais ("vous adresser", "atteindre", "supporter" pour "soutenir").
+→ Aucun mot administratif ("dans le cadre de", "au niveau de", "à ce sujet").
+→ Pas plus d'un participe présent par paragraphe.
+→ Toujours actif, jamais passif lourd.
+→ Pas de "afin de" si "pour" suffit. Pas de "concernant" si "sur" suffit.
+→ Les mots-clés à dire au téléphone doivent être SIMPLES à articuler.
+
+AVANT DE FINALISER, tu RELIS mentalement le script :
+1. Un commercial peut-il le lire à voix haute SANS hésiter sur la formulation ?
+2. Y a-t-il une seule formule qui sonne IA ou commerciale ? → réécris.
+3. Le métier mentionné est-il PALPABLE dans chaque phrase ? → sinon, ajuste.
+4. Y a-t-il une faute, un accord douteux ? → corrige.
+
+═══ RÈGLES DE FORME ═══
+
+1. Utilise EXCLUSIVEMENT les variables suivantes : {{prenom}} (prospect), {{entreprise}}, {{expediteur}} (qui appelle).
+2. Indications scéniques entre parenthèses ("→ Silence de 2 secondes") quand pertinent.
+3. Structure en phases numérotées si le script est long. Sinon adapté au format (voicemail, relance courte…).
+4. Vouvoiement strict. Jamais "j'espère que vous allez bien", jamais "désolé de vous déranger".
+5. JAMAIS de superlatifs ("le meilleur", "incroyable", "leader").
+6. JAMAIS de promesse non chiffrée. Si tu cites un résultat, fais-le sobrement.`;
 }
 
 function buildSystemPromptObjection(ctx: any): string {
+  const hasContext = ctx.businessBrief || ctx.valueProps;
+
   return `Tu es un coach senior en télévente B2B. Tu rédiges des réponses-clefs aux objections rencontrées lors d'appels téléphoniques de prospection.
-Tu écris EXCLUSIVEMENT en français, avec un ton posé, direct, qui désarme sans manipuler.
 
-═══ CONTEXTE DE L'AGENCE ═══
-${ctx.agencyName ? `Nom : ${ctx.agencyName}` : ""}
-${ctx.activity ? `Activité : ${ctx.activity}` : ""}
-${ctx.businessBrief ? `\nDescription : ${ctx.businessBrief}` : ""}
+╔════════════════════════════════════════════════════════════════════╗
+║  CONTEXTE DE L'AGENCE — À UTILISER, PAS À IGNORER                 ║
+╠════════════════════════════════════════════════════════════════════╣
+${ctx.agencyName ? `║  Nom : ${ctx.agencyName}\n` : ""}${ctx.activity ? `║  Activité : ${ctx.activity}\n` : ""}${ctx.businessBrief ? `║\n║  ${ctx.businessBrief.replace(/\n/g, "\n║  ")}\n` : ""}${ctx.valueProps ? `║\n║  ─── PROPOSITIONS DE VALEUR (à mobiliser dans les preuves) ───\n║  ${ctx.valueProps.replace(/\n/g, "\n║  ")}\n` : ""}╚════════════════════════════════════════════════════════════════════╝
 
-═══ PHILOSOPHIE DE RÉPONSE AUX OBJECTIONS (Wyngo) ═══
+═══ MÉCANIQUE EN 4 TEMPS (à suivre obligatoirement) ═══
 
 1. **Valider d'abord** ("Je comprends parfaitement", "C'est la meilleure démarche").
 2. **Recadrer** sans contredire ("La question n'est pas X mais Y").
-3. **Apporter une preuve sobre** (chiffre vérifiable OU démarche concrète, JAMAIS de promesse vague).
-4. **Re-proposer une action douce** (pas "achetez maintenant" mais "faisons un essai sans engagement").
+3. **Apporter une preuve sobre** — utiliser un chiffre/un fait DU CONTEXTE AGENCE ci-dessus.
+   JAMAIS de promesse vague ou de chiffre inventé.
+4. **Ré-engagement doux** (pas "achetez", plutôt "faisons un essai sans engagement").
 
-EXEMPLES D'ESPRIT (à imiter, pas à recopier) :
+═══ ADAPTATION CONTEXTUELLE ═══
+
+→ Si le brief précise un MÉTIER (médecin, restaurateur, avocat, coiffeur…),
+  la preuve apportée doit illustrer le bénéfice POUR CE MÉTIER spécifiquement.
+→ Si le brief mentionne un canal (appel direct, voicemail, message LinkedIn),
+  adapte la longueur et le débit verbal.
+
+═══ EXEMPLES D'ESPRIT (à imiter, pas à recopier mot pour mot) ═══
+
 - "Je n'ai pas le temps" → "C'est précisément pour ça que je demande 45 secondes, pas une minute. Vous décidez après."
-- "C'est trop cher" → "La question n'est pas combien ça coûte, mais combien ça rapporte. ROI moyen constaté : 7 semaines."
+- "C'est trop cher" → "La question n'est pas combien ça coûte, mais combien ça rapporte. Sur nos derniers projets, le ROI moyen constaté est de 7 semaines."
 - "Envoyez-moi un email" → "Entre nous, vous savez ce qui se passe : il atterrit dans 200 autres. 60 secondes pour vous expliquer, sinon je vous laisse définitivement."
 
-═══ RÈGLES ═══
+═══ EXIGENCES DE FRANÇAIS NATIF (CRITIQUE) ═══
+
+→ Phrases courtes, parlées naturellement (le commercial va les LIRE À VOIX HAUTE).
+→ Zéro calque anglais, zéro mot administratif, zéro participe présent superflu.
+→ Aucun "désolé", aucun "je m'excuse" — posture fondateur, pas employé.
+→ Toujours actif. Jamais passif lourd.
+
+AVANT DE FINALISER, tu relis :
+1. Est-ce dit comme par un humain au téléphone ?
+2. La preuve apportée vient-elle du contexte agence (pas inventée) ?
+3. La réponse fait-elle 60-120 mots max ?
+
+═══ RÈGLES DE FORME ═══
+
 1. Variables autorisées : {{prenom}}, {{entreprise}}, {{expediteur}} (parcimonieusement).
-2. Réponse courte (60-120 mots max). Pas de paraphrase, pas de remplissage.
-3. Pas de "désolé", pas de "je m'excuse" — posture fondateur, pas employé.
-4. Une réponse = une mécanique psychologique (validation + recadrage + preuve + ré-engagement).`;
+2. 60-120 mots max. Pas de paraphrase, pas de remplissage.
+3. ${hasContext ? "Mobilise au moins UNE proposition de valeur ou un chiffre du contexte ci-dessus." : "Sois sobre dans les promesses (aucun chiffre inventé)."}`;
 }
 
 function buildUserPrompt(input: any): string {
@@ -198,10 +266,11 @@ async function generateWithGemini(systemPrompt: string, userPrompt: string) {
       generationConfig: {
         // Bas pour rester fidèle au contexte agence et à la méthode Wyngo.
         temperature: 0.4,
-        maxOutputTokens: 4000,
-        // Gemini 2.5 : on désactive le thinking (consomme inutilement notre budget tokens
-        // et fait tronquer la réponse JSON).
-        thinkingConfig: { thinkingBudget: 0 },
+        // 6000 tokens = budget large pour thinking + JSON final.
+        maxOutputTokens: 6000,
+        // 1500 tokens de thinking pour permettre la relecture mentale + l'adaptation
+        // par métier exigée par le system prompt.
+        thinkingConfig: { thinkingBudget: 1500 },
         responseMimeType: "application/json",
         responseSchema: {
           type: "object",

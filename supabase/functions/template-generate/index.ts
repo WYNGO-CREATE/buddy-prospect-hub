@@ -65,7 +65,23 @@ D. Tu DOIS éviter à tout prix les phrases génériques de prospection web ("pr
 E. Si la description mentionne un FONDATEUR par son prénom, tu peux signer mentalement le mail à la 1ère personne du singulier (sans signature visible — elle est ajoutée auto).
 F. Aucun chiffre inventé — uniquement les chiffres qui apparaissent EXPLICITEMENT dans le contexte ci-dessus.
 
-` : ""}═══ EXIGENCES DE FRANÇAIS NATIF (CRITIQUE) ═══
+` : ""}═══ ADAPTATION MULTI-MÉTIER (CRUCIAL) ═══
+
+Le brief de l'utilisateur va contenir un MÉTIER ou un CONTEXTE spécifique
+(restaurateur, médecin, avocat, coiffeur, kiné, photographe, e-commerçant…).
+
+→ Tu DOIS adapter chaque phrase aux RÉALITÉS du métier mentionné :
+  - Vocabulaire spécifique au métier (clientèle, jargon, codes pro).
+  - Exemples concrets PERTINENTS pour CE métier (un restaurateur entend
+    "couverts" et "tables", un médecin entend "consultations" et "patientèle",
+    un coiffeur "fauteuil" et "fidélisation", un avocat "dossiers" et "cabinet").
+  - Phrase d'ouverture qui mobilise une observation propre au métier
+    (jamais une phrase qui marcherait pour n'importe quel commerce).
+
+→ Si on enlève le nom de l'entreprise, on doit IMMÉDIATEMENT reconnaître à quel
+  métier ce mail s'adresse. Sinon, ton mail est trop générique : réécris.
+
+═══ EXIGENCES DE FRANÇAIS NATIF (CRITIQUE) ═══
 
 Le texte doit être écrit comme par un Français natif francophone éduqué.
 

@@ -620,8 +620,8 @@ function ScriptEditor({
             <Textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              rows={kind === "script" ? 14 : 6}
-              className="font-mono text-sm leading-relaxed"
+              rows={kind === "script" ? 16 : 7}
+              className="text-[14px] leading-relaxed font-sans"
               placeholder={kind === "script"
                 ? `Bonjour {{prenom}}, c'est {{expediteur}}…`
                 : `Réponse claire et directe…`}
