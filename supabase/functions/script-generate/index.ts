@@ -197,7 +197,10 @@ async function generateWithGemini(systemPrompt: string, userPrompt: string) {
       contents: [{ role: "user", parts: [{ text: userPrompt }] }],
       generationConfig: {
         temperature: 0.7,
-        maxOutputTokens: 2000,
+        maxOutputTokens: 4000,
+        // Gemini 2.5 : on désactive le thinking (consomme inutilement notre budget tokens
+        // et fait tronquer la réponse JSON).
+        thinkingConfig: { thinkingBudget: 0 },
         responseMimeType: "application/json",
         responseSchema: {
           type: "object",

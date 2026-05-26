@@ -432,8 +432,22 @@ function AIGenerateDialog({
     });
     setGenerating(false);
     if (error || data?.error) {
-      toast.error(data?.error || error?.message || "Génération échouée");
-      if (data?.hint) toast.info(data.hint, { duration: 10000 });
+      // Quand la edge function renvoie 4xx/5xx, supabase-js met l'erreur dans `error`
+      // et le body de réponse est dans error.context.body (un Response).
+      let bodyDetails: any = data;
+      try {
+        // @ts-ignore
+        if (!bodyDetails && error?.context?.json) bodyDetails = await error.context.json();
+        // @ts-ignore
+        else if (!bodyDetails && error?.context?.text) bodyDetails = JSON.parse(await error.context.text());
+      } catch {}
+
+      console.error("[template-generate] FULL response:", { data, error, bodyDetails });
+      const headline = bodyDetails?.error || data?.error || error?.message || "Génération échouée";
+      toast.error(headline, { duration: 12000 });
+      if (bodyDetails?.details) toast.error("Détails : " + String(bodyDetails.details).slice(0, 400), { duration: 16000 });
+      if (bodyDetails?.hint) toast.info(bodyDetails.hint, { duration: 12000 });
+      if (bodyDetails?.model) toast.info("Modèle utilisé : " + bodyDetails.provider + " / " + bodyDetails.model, { duration: 10000 });
       return;
     }
     toast.success(`Template généré (${data.tokens_in}+${data.tokens_out} tokens, ${data.duration_ms}ms)`);

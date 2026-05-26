@@ -165,7 +165,12 @@ async function generateWithGemini(systemPrompt: string, userPrompt: string): Pro
       contents: [{ role: "user", parts: [{ text: userPrompt }] }],
       generationConfig: {
         temperature: 0.7,
-        maxOutputTokens: 1500,
+        // Gemini 2.5 utilise des "thinking tokens" qui consomment le budget.
+        // 4000 tokens = large marge pour pensée + JSON structurée complète.
+        maxOutputTokens: 4000,
+        // On désactive le thinking pour ce cas d'usage simple (génération de template),
+        // ça économise les tokens et accélère la réponse.
+        thinkingConfig: { thinkingBudget: 0 },
         responseMimeType: "application/json",
         responseSchema: {
           type: "object",
@@ -262,15 +267,21 @@ Deno.serve(async (req) => {
         providerResult = await generateWithGemini(systemPrompt, userPrompt);
       }
     } catch (e) {
-      console.error("[template-generate] Provider error", e);
+      const errMsg = String(e);
+      console.error("[template-generate] Provider error", errMsg);
       await admin.from("ai_generations").insert({
         owner_id: userId,
         kind: "template",
         input,
-        error: String(e),
+        error: errMsg,
         duration_ms: Date.now() - startTime,
       });
-      return json({ error: "Génération IA échouée", details: String(e).slice(0, 500) }, 502);
+      return json({
+        error: "Génération IA échouée",
+        details: errMsg.slice(0, 1000),
+        provider: ANTHROPIC_API_KEY ? "anthropic" : "gemini",
+        model: ANTHROPIC_API_KEY ? ANTHROPIC_MODEL : GEMINI_MODEL,
+      }, 502);
     }
 
     const result = providerResult.result as { name: string; subject: string; body: string; category: string };
