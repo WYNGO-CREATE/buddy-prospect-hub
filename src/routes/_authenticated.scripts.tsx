@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Phone, Plus, Pencil, Trash2, Sparkles, MessageSquareWarning, Users, User, Download } from "lucide-react";
+import { Phone, Plus, Pencil, Trash2, Sparkles, MessageSquareWarning, Users, User, Download, Wand2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { AVAILABLE_VARS } from "@/lib/render-template";
 import { REFERENCE_CALL_SCRIPT, REFERENCE_OBJECTIONS } from "@/lib/call-scripts-seed";
@@ -57,6 +57,8 @@ function ScriptsPage() {
   const [editing, setEditing] = useState<CallScript | null>(null);
   const [creating, setCreating] = useState<"script" | "objection" | null>(null);
   const [importing, setImporting] = useState(false);
+  const [aiOpen, setAiOpen] = useState<"script" | "objection" | null>(null);
+  const [seedFromAI, setSeedFromAI] = useState<{ kind: "script" | "objection"; title: string; content: string; category: string } | null>(null);
 
   const { data: scripts = [], isLoading } = useQuery({
     queryKey: ["call-scripts"],
@@ -131,18 +133,25 @@ function ScriptsPage() {
         <div className="flex gap-2 flex-wrap">
           {isEmpty && (
             <Button
-              variant="default"
+              variant="outline"
               onClick={importReference}
               disabled={importing}
-              className="bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-700 hover:to-fuchsia-700 text-white"
             >
               <Download className="h-4 w-4 mr-1.5" />
-              {importing ? "Import…" : "Importer le script de référence"}
+              {importing ? "Import…" : "Importer le référentiel"}
             </Button>
           )}
+          <Button
+            variant="default"
+            onClick={() => setAiOpen(tab)}
+            className="bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-700 hover:to-fuchsia-700 text-white"
+          >
+            <Wand2 className="h-4 w-4 mr-1.5" />
+            Générer avec l'IA
+          </Button>
           <Button variant="outline" onClick={() => setCreating(tab)}>
             <Plus className="h-4 w-4 mr-1.5" />
-            Nouveau {tab === "script" ? "script" : "objection"}
+            Manuel
           </Button>
         </div>
       </div>
@@ -276,18 +285,170 @@ function ScriptsPage() {
       )}
 
       {/* Edit/Create dialog */}
-      {(editing || creating) && (
+      {(editing || creating || seedFromAI) && (
         <ScriptEditor
           script={editing}
-          defaultKind={creating}
+          defaultKind={creating || seedFromAI?.kind || null}
+          seed={seedFromAI}
           onClose={() => {
             setEditing(null);
             setCreating(null);
+            setSeedFromAI(null);
           }}
           onSaved={() => qc.invalidateQueries({ queryKey: ["call-scripts"] })}
         />
       )}
+
+      {/* Dialog IA */}
+      {aiOpen && (
+        <AIGenerateDialog
+          kind={aiOpen}
+          onClose={() => setAiOpen(null)}
+          onResult={(result) => {
+            setAiOpen(null);
+            setSeedFromAI(result);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+/* ─── Dialog : génération IA d'un script ou d'une objection ─── */
+function AIGenerateDialog({
+  kind, onClose, onResult,
+}: {
+  kind: "script" | "objection";
+  onClose: () => void;
+  onResult: (r: { kind: "script" | "objection"; title: string; content: string; category: string }) => void;
+}) {
+  const [brief, setBrief] = useState("");
+  const [length, setLength] = useState<"court" | "standard" | "long">("standard");
+  const [extraNotes, setExtraNotes] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const suggestionsScript = [
+    "Appel à froid pour un restaurateur qui veut plus de réservations",
+    "Relance après un prospect qui a téléchargé un guide mais ne répond plus",
+    "Voicemail pour un médecin libéral injoignable",
+    "Appel après recommandation d'un client existant",
+    "Réactivation d'un prospect dormant depuis 6 mois",
+  ];
+  const suggestionsObjection = [
+    "« On a déjà un site internet, on va le garder »",
+    "« Le digital, ce n'est pas notre priorité actuelle »",
+    "« On préfère bosser avec quelqu'un de local de confiance »",
+    "« Je dois voir avec mon comptable avant »",
+    "« Rappelez-moi après les vacances »",
+  ];
+  const suggestions = kind === "script" ? suggestionsScript : suggestionsObjection;
+
+  const generate = async () => {
+    if (!brief.trim()) { toast.error(kind === "script" ? "Décris l'objectif de l'appel" : "Écris l'objection à laquelle répondre"); return; }
+    setBusy(true);
+    const { data, error } = await supabase.functions.invoke("script-generate", {
+      body: {
+        kind,
+        brief: brief.trim(),
+        length: kind === "script" ? length : undefined,
+        extra_notes: extraNotes.trim() || undefined,
+      },
+    });
+    setBusy(false);
+    if (error || data?.error) {
+      toast.error(data?.error || error?.message || "Génération échouée");
+      return;
+    }
+    toast.success("Généré — vous pouvez ajuster avant d'enregistrer");
+    onResult({
+      kind,
+      title: data.title,
+      content: data.content,
+      category: data.category || (kind === "script" ? "prise_contact" : "autre"),
+    });
+  };
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Wand2 className="h-5 w-5 text-violet-600" />
+            Générer {kind === "script" ? "un script d'appel" : "une réponse d'objection"} avec l'IA
+          </DialogTitle>
+          <DialogDescription>
+            L'IA utilise votre contexte agence + la méthode Wyngo (transparence fondateur, ROI, maquette 48h, etc.).
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>
+              {kind === "script"
+                ? "Objectif de l'appel (cible, contexte, intention)"
+                : "Phrase de l'objection (mot pour mot)"}
+              <span className="text-destructive ml-1">*</span>
+            </Label>
+            <Textarea
+              value={brief}
+              onChange={(e) => setBrief(e.target.value)}
+              rows={3}
+              placeholder={kind === "script"
+                ? "Ex : Appel à froid d'un restaurateur indépendant pour proposer un nouveau site avec réservation en ligne"
+                : "Ex : « On a déjà un développeur en interne »"}
+            />
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {suggestions.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setBrief(s)}
+                  className="text-[11px] px-2 py-1 rounded-full border bg-muted/30 hover:bg-muted transition"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {kind === "script" && (
+            <div className="space-y-2">
+              <Label>Longueur</Label>
+              <select
+                value={length}
+                onChange={(e) => setLength(e.target.value as any)}
+                className="w-full h-9 rounded-md border bg-background px-3 text-sm"
+              >
+                <option value="court">Court (60-120 mots — voicemail / relance brève)</option>
+                <option value="standard">Standard (script complet 5 phases — 300-450 mots)</option>
+                <option value="long">Long (avec variantes option A/B — 500-700 mots)</option>
+              </select>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label>Contraintes ou détails supplémentaires (optionnel)</Label>
+            <Textarea
+              value={extraNotes}
+              onChange={(e) => setExtraNotes(e.target.value)}
+              rows={2}
+              placeholder="Ex : Insister sur le fait que la maquette est offerte. Ne pas parler du prix exact."
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>Annuler</Button>
+          <Button
+            onClick={generate}
+            disabled={busy}
+            className="bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-700 hover:to-fuchsia-700 text-white"
+          >
+            {busy ? (<><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Génération…</>) : (<><Wand2 className="h-4 w-4 mr-1.5" /> Générer</>)}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -339,18 +500,20 @@ function ScriptCard({
 }
 
 function ScriptEditor({
-  script, defaultKind, onClose, onSaved,
+  script, defaultKind, seed, onClose, onSaved,
 }: {
   script: CallScript | null;
   defaultKind: "script" | "objection" | null;
+  seed?: { kind: "script" | "objection"; title: string; content: string; category: string } | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const { user } = useAuth();
-  const [kind, setKind] = useState<"script" | "objection">(script?.kind || defaultKind || "script");
-  const [title, setTitle] = useState(script?.title || "");
-  const [content, setContent] = useState(script?.content || "");
-  const [category, setCategory] = useState(script?.category || (kind === "script" ? "prise_contact" : "prix"));
+  const initialKind: "script" | "objection" = script?.kind || seed?.kind || defaultKind || "script";
+  const [kind, setKind] = useState<"script" | "objection">(initialKind);
+  const [title, setTitle] = useState(script?.title || seed?.title || "");
+  const [content, setContent] = useState(script?.content || seed?.content || "");
+  const [category, setCategory] = useState(script?.category || seed?.category || (initialKind === "script" ? "prise_contact" : "prix"));
   const [isShared, setIsShared] = useState(script?.is_shared || false);
   const [saving, setSaving] = useState(false);
 
