@@ -196,7 +196,8 @@ async function generateWithGemini(systemPrompt: string, userPrompt: string) {
       systemInstruction: { parts: [{ text: systemPrompt }] },
       contents: [{ role: "user", parts: [{ text: userPrompt }] }],
       generationConfig: {
-        temperature: 0.7,
+        // Bas pour rester fidèle au contexte agence et à la méthode Wyngo.
+        temperature: 0.4,
         maxOutputTokens: 4000,
         // Gemini 2.5 : on désactive le thinking (consomme inutilement notre budget tokens
         // et fait tronquer la réponse JSON).

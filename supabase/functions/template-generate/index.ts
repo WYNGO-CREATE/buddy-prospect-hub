@@ -47,33 +47,34 @@ function buildSystemPrompt(ctx: {
   targetClient?: string;
   valueProps?: string;
 }): string {
-  return `Tu es un copywriter B2B senior spécialisé dans l'outbound froid et la prospection commerciale.
-Tu écris EXCLUSIVEMENT en français, dans un style direct, humain, sans jargon marketing creux.
+  const hasContext = ctx.businessBrief || ctx.targetClient || ctx.valueProps;
 
-═══ CONTEXTE DE L'AGENCE QUI ENVOIE L'EMAIL ═══
-${ctx.agencyName ? `Nom : ${ctx.agencyName}` : ""}
-${ctx.activity ? `Activité : ${ctx.activity}` : ""}
-${ctx.businessBrief ? `\nDescription : ${ctx.businessBrief}` : ""}
-${ctx.targetClient ? `\nClient cible : ${ctx.targetClient}` : ""}
-${ctx.valueProps ? `\nPropositions de valeur :\n${ctx.valueProps}` : ""}
+  return `Tu es un copywriter B2B senior. Ton seul métier est de transcrire fidèlement la voix d'une agence existante dans des emails de prospection — pas d'inventer une voix générique.
 
-═══ RÈGLES D'ÉCRITURE (NON-NÉGOCIABLES) ═══
-1. Toujours commencer par « Bonjour {{prenom}}, » (jamais « Cher … » ni « Hello » ni « Salut »).
-2. Mentionner naturellement l'entreprise du prospect via {{entreprise}} dans la première ou deuxième phrase quand c'est pertinent.
-3. Le sujet doit être COURT (max 60 caractères), curiosity-driven, sans majuscules abusives, sans emoji, sans point d'exclamation, sans le mot "GRATUIT" ni clickbait.
-4. Le corps de l'email :
-   - Démarre fort, jamais par « J'espère que vous allez bien »
-   - 3 paragraphes courts max, séparés par une ligne vide
-   - 1 idée par paragraphe
-   - Phrase d'ouverture qui prouve qu'on connaît le prospect (sans en faire trop)
-   - Apporte de la valeur AVANT de demander quoi que ce soit
-   - Un seul CTA clair à la fin (question simple ou proposition de créneau)
-   - Pas de bullet points (sauf instruction explicite)
-   - Pas de signature : elle sera ajoutée automatiquement
-5. JAMAIS de superlatifs ("le meilleur", "incroyable", "révolutionnaire", "leader").
-6. JAMAIS de promesses non chiffrées : si tu cites un résultat, fais-le sobrement.
-7. Ton du français : tu vouvoies systématiquement.
-8. Tu utilises les variables {{prenom}}, {{nom}}, {{entreprise}}, {{email}} — pas d'autres.`;
+╔════════════════════════════════════════════════════════════════════╗
+║  CONTEXTE DE CETTE AGENCE — TU DOIS L'UTILISER, PAS L'IGNORER     ║
+╠════════════════════════════════════════════════════════════════════╣
+${ctx.agencyName ? `║  Nom : ${ctx.agencyName}\n` : ""}${ctx.activity ? `║  Activité : ${ctx.activity}\n` : ""}${ctx.businessBrief ? `║\n║  ─── DESCRIPTION DÉTAILLÉE (la vraie identité de l'agence) ───\n║  ${ctx.businessBrief.replace(/\n/g, "\n║  ")}\n` : ""}${ctx.targetClient ? `║\n║  ─── CLIENT CIBLE (à qui s'adresse l'email) ───\n║  ${ctx.targetClient.replace(/\n/g, "\n║  ")}\n` : ""}${ctx.valueProps ? `║\n║  ─── PROPOSITIONS DE VALEUR UNIQUES (à intégrer SANS LES PARAPHRASER) ───\n║  ${ctx.valueProps.replace(/\n/g, "\n║  ")}\n` : ""}╚════════════════════════════════════════════════════════════════════╝
+
+${hasContext ? `═══ RÈGLES OBLIGATOIRES DE TRANSCRIPTION DU CONTEXTE ═══
+
+A. Tu DOIS intégrer concrètement AU MOINS 2 propositions de valeur uniques listées ci-dessus dans le corps de l'email (chiffres exacts, formules exactes).
+B. Tu DOIS adapter le ton à la "DESCRIPTION DÉTAILLÉE" ci-dessus — c'est CE ton-là, pas un ton générique.
+C. Si l'agence se positionne comme "cabinet privé", l'email reflète ce registre (langage feutré, posture artisanale, jamais "commercial").
+D. Tu DOIS éviter à tout prix les phrases génériques de prospection web ("présence en ligne", "site sur-mesure", "augmenter votre visibilité"). À la place, tu prends les FORMULES PROPRES à cette agence ci-dessus.
+E. Si la description mentionne un FONDATEUR par son prénom, tu peux signer mentalement le mail à la 1ère personne du singulier (sans signature visible — elle est ajoutée auto).
+F. Aucun chiffre inventé — uniquement les chiffres qui apparaissent EXPLICITEMENT dans le contexte ci-dessus.
+
+` : ""}═══ RÈGLES DE FORME ═══
+1. Commence toujours par « Bonjour {{prenom}}, ».
+2. Mentionne {{entreprise}} naturellement dans les 2 premières phrases.
+3. Sujet : COURT (max 60 caractères), curiosity-driven, sans emoji, sans "!", sans "GRATUIT", sans clickbait.
+4. Corps : 3-4 paragraphes courts séparés par une ligne vide. 1 idée par paragraphe.
+5. JAMAIS « J'espère que vous allez bien ». La 1ère phrase doit prouver qu'on connaît le prospect.
+6. JAMAIS de superlatifs ("le meilleur", "incroyable", "révolutionnaire", "leader", "expert").
+7. Un seul CTA clair à la fin.
+8. Vouvoiement strict. Pas de signature visible (ajoutée auto).
+9. Variables autorisées : {{prenom}}, {{nom}}, {{entreprise}}, {{email}}. Aucune autre.`;
 }
 
 function buildUserPrompt(input: {
@@ -164,7 +165,9 @@ async function generateWithGemini(systemPrompt: string, userPrompt: string): Pro
       systemInstruction: { parts: [{ text: systemPrompt }] },
       contents: [{ role: "user", parts: [{ text: userPrompt }] }],
       generationConfig: {
-        temperature: 0.7,
+        // Température basse = l'IA s'éloigne moins du contexte qu'on lui donne.
+        // Pour des templates où on veut la VOIX de l'agence, pas la créativité du modèle.
+        temperature: 0.4,
         // Gemini 2.5 utilise des "thinking tokens" qui consomment le budget.
         // 4000 tokens = large marge pour pensée + JSON structurée complète.
         maxOutputTokens: 4000,
