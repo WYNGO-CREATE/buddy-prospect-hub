@@ -12,12 +12,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Search, AlertTriangle, Download, Upload } from "lucide-react";
+import { Plus, Search, AlertTriangle, Download, Upload, PhoneCall, PhoneOff, PhoneIncoming } from "lucide-react";
 import { PROSPECT_STATUSES, STATUS_LABELS, STATUS_VARIANTS, SUGGESTION_TONE, suggestNextAction, type ProspectStatus } from "@/lib/crm";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { toCSV, downloadCSV, parseCSV } from "@/lib/csv";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 
 type DuplicateMatch = {
@@ -58,6 +58,7 @@ function ProspectsPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [callFilter, setCallFilter] = useState<"all" | "never" | "recent" | "stale">("all");
   const [scope, setScope] = useState<"mine" | "team">("mine");
   const [open, setOpen] = useState(false);
   const [duplicates, setDuplicates] = useState<DuplicateMatch[]>([]);
@@ -129,6 +130,34 @@ function ProspectsPage() {
     (nextFollowups || []).forEach((r: any) => { if (!m.has(r.prospect_id)) m.set(r.prospect_id, r.scheduled_at); });
     return m;
   }, [nextFollowups]);
+
+  // ─── Dernier appel par prospect (pour la colonne "Appel" + le filtre) ───
+  const { data: allCalls } = useQuery({
+    queryKey: ["all-calls-list"],
+    refetchInterval: 60_000,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("call_logs")
+        .select("prospect_id, called_at")
+        .order("called_at", { ascending: false });
+      return data || [];
+    },
+  });
+  const lastCallMap = useMemo(() => {
+    const m = new Map<string, string>();
+    (allCalls || []).forEach((c: any) => {
+      if (!m.has(c.prospect_id)) m.set(c.prospect_id, c.called_at);
+    });
+    return m;
+  }, [allCalls]);
+
+  // Catégorisation appel : never / recent (<14 j) / stale (>14 j)
+  const callBucket = (prospectId: string): "never" | "recent" | "stale" => {
+    const ts = lastCallMap.get(prospectId);
+    if (!ts) return "never";
+    const days = (Date.now() - new Date(ts).getTime()) / (24 * 60 * 60 * 1000);
+    return days <= 14 ? "recent" : "stale";
+  };
 
   // Vérification en direct des doublons (email / téléphone / site) — debounce 400ms
   useEffect(() => {
@@ -419,6 +448,15 @@ function ProspectsPage() {
               ))}
             </SelectContent>
           </Select>
+          <Select value={callFilter} onValueChange={(v) => setCallFilter(v as any)}>
+            <SelectTrigger className="w-[200px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">📞 Tous (appels)</SelectItem>
+              <SelectItem value="never">📞 Jamais appelés</SelectItem>
+              <SelectItem value="recent">📞 Appelés ≤ 14 j</SelectItem>
+              <SelectItem value="stale">📞 À rappeler (&gt; 14 j)</SelectItem>
+            </SelectContent>
+          </Select>
           {role === "admin" && (
             <Select value={scope} onValueChange={(v) => setScope(v as any)}>
               <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
@@ -441,6 +479,7 @@ function ProspectsPage() {
                 <TableRow>
                   <TableHead>Nom</TableHead>
                   <TableHead>Société</TableHead>
+                  <TableHead>Appel</TableHead>
                   <TableHead>Étiquettes</TableHead>
                   <TableHead>Prochaine action</TableHead>
                   <TableHead>Suggestion</TableHead>
@@ -449,7 +488,11 @@ function ProspectsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {prospects.map((p) => {
+                {prospects.filter((p) => {
+                  // Filtre Appel
+                  if (callFilter === "all") return true;
+                  return callBucket(p.id) === callFilter;
+                }).map((p) => {
                   const sugg = suggestNextAction({
                     status: p.status as ProspectStatus,
                     createdAt: p.created_at,
@@ -458,6 +501,8 @@ function ProspectsPage() {
                     nextActionLabel: p.next_action,
                     nextActionAt: p.next_action_at,
                   });
+                  const lastCallAt = lastCallMap.get(p.id);
+                  const bucket = callBucket(p.id);
                   return (
                   <TableRow key={p.id}>
                     <TableCell>
@@ -469,6 +514,30 @@ function ProspectsPage() {
                       )}
                     </TableCell>
                     <TableCell className="text-muted-foreground">{p.company || "—"}</TableCell>
+                    <TableCell>
+                      {bucket === "never" ? (
+                        <span className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900">
+                          <PhoneOff className="h-3 w-3" />
+                          Jamais
+                        </span>
+                      ) : bucket === "recent" ? (
+                        <span
+                          className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900"
+                          title={lastCallAt ? format(new Date(lastCallAt), "PPp", { locale: fr }) : ""}
+                        >
+                          <PhoneIncoming className="h-3 w-3" />
+                          {lastCallAt && formatDistanceToNow(new Date(lastCallAt), { addSuffix: true, locale: fr })}
+                        </span>
+                      ) : (
+                        <span
+                          className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900"
+                          title={lastCallAt ? format(new Date(lastCallAt), "PPp", { locale: fr }) : ""}
+                        >
+                          <PhoneCall className="h-3 w-3" />
+                          {lastCallAt && formatDistanceToNow(new Date(lastCallAt), { addSuffix: true, locale: fr })}
+                        </span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
                         {(p.tags || []).slice(0, 3).map((t: string) => (
