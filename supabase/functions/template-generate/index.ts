@@ -65,15 +65,35 @@ D. Tu DOIS éviter à tout prix les phrases génériques de prospection web ("pr
 E. Si la description mentionne un FONDATEUR par son prénom, tu peux signer mentalement le mail à la 1ère personne du singulier (sans signature visible — elle est ajoutée auto).
 F. Aucun chiffre inventé — uniquement les chiffres qui apparaissent EXPLICITEMENT dans le contexte ci-dessus.
 
-` : ""}═══ RÈGLES DE FORME ═══
+` : ""}═══ EXIGENCES DE FRANÇAIS NATIF (CRITIQUE) ═══
+
+Le texte doit être écrit comme par un Français natif francophone éduqué.
+
+→ Phrases courtes, fluides, sans répétitions de mots à 3 lignes d'écart.
+→ Articles, prépositions, accords genre/nombre : zéro erreur.
+→ Pas de calques de l'anglais ("vous adresser", "atteindre", "supporter" dans le sens "soutenir").
+→ Liaisons logiques naturelles entre paragraphes ("Et c'est précisément pour ça que…", "D'où ma démarche aujourd'hui :", "Voilà pourquoi…").
+→ Aucune phrase passive lourde. Toujours actif.
+→ Pas de "afin de" si "pour" suffit. Pas de "concernant" si "sur" suffit.
+→ Aucun mot administratif ("dans le cadre de", "au niveau de", "à ce sujet").
+→ Pas plus d'un participe présent par paragraphe ("permettant", "offrant"…).
+→ Aucune phrase qui dépasse 2 lignes. Si une phrase en fait 3, tu la coupes en 2.
+
+AVANT DE FINALISER, tu RELIS mentalement le mail :
+1. Est-ce qu'un humain dirait vraiment ça à l'oral ? Sinon → réécris.
+2. Y a-t-il une seule formule qui sonne IA ou commerciale ? Si oui → réécris.
+3. Y a-t-il une faute, un accord douteux, une ambiguïté ? Si oui → corrige.
+4. Le mail tient-il en 4 paragraphes max, fluides ? Si plus → coupe.
+
+═══ RÈGLES DE FORME ═══
 1. Commence toujours par « Bonjour {{prenom}}, ».
 2. Mentionne {{entreprise}} naturellement dans les 2 premières phrases.
-3. Sujet : COURT (max 60 caractères), curiosity-driven, sans emoji, sans "!", sans "GRATUIT", sans clickbait.
-4. Corps : 3-4 paragraphes courts séparés par une ligne vide. 1 idée par paragraphe.
+3. Sujet : COURT (max 60 caractères), curiosity-driven, sans emoji, sans "!", sans "GRATUIT", sans clickbait, sans deux-points dans la première moitié.
+4. Corps : 3 à 4 paragraphes courts (2-4 phrases chacun), séparés par une LIGNE VIDE.
 5. JAMAIS « J'espère que vous allez bien ». La 1ère phrase doit prouver qu'on connaît le prospect.
 6. JAMAIS de superlatifs ("le meilleur", "incroyable", "révolutionnaire", "leader", "expert").
-7. Un seul CTA clair à la fin.
-8. Vouvoiement strict. Pas de signature visible (ajoutée auto).
+7. Un seul CTA clair à la fin (proposition de créneau ou question ouverte).
+8. Vouvoiement strict. PAS DE SIGNATURE — elle est ajoutée automatiquement par le système au moment de l'envoi.
 9. Variables autorisées : {{prenom}}, {{nom}}, {{entreprise}}, {{email}}. Aucune autre.`;
 }
 
@@ -168,12 +188,11 @@ async function generateWithGemini(systemPrompt: string, userPrompt: string): Pro
         // Température basse = l'IA s'éloigne moins du contexte qu'on lui donne.
         // Pour des templates où on veut la VOIX de l'agence, pas la créativité du modèle.
         temperature: 0.4,
-        // Gemini 2.5 utilise des "thinking tokens" qui consomment le budget.
-        // 4000 tokens = large marge pour pensée + JSON structurée complète.
-        maxOutputTokens: 4000,
-        // On désactive le thinking pour ce cas d'usage simple (génération de template),
-        // ça économise les tokens et accélère la réponse.
-        thinkingConfig: { thinkingBudget: 0 },
+        // 6000 tokens : large marge pour 1500 tokens de thinking + JSON final.
+        maxOutputTokens: 6000,
+        // Petit budget thinking (1500 tokens) pour permettre la relecture mentale
+        // exigée par le system prompt (4 étapes de QC interne avant finalisation).
+        thinkingConfig: { thinkingBudget: 1500 },
         responseMimeType: "application/json",
         responseSchema: {
           type: "object",
