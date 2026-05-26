@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Users, PhoneCall, Star, Trophy, CalendarClock, Activity, Medal, Mail, Send, MessageSquareReply, TrendingUp, Workflow as WorkflowIcon } from "lucide-react";
+import { Users, PhoneCall, PhoneOff, Star, Trophy, CalendarClock, Activity, Medal, Mail, Send, MessageSquareReply, TrendingUp, Workflow as WorkflowIcon } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 
@@ -20,7 +20,7 @@ function useStats(scope: "mine" | "all", userId?: string) {
     enabled: scope === "all" || !!userId,
     queryFn: async () => {
       const filter = (q: any) => (scope === "mine" ? q.eq("owner_id", userId) : q);
-      const [prospects, calls, interested, converted, followups] = await Promise.all([
+      const [prospects, calls, interested, converted, followups, allCalls, allProspects] = await Promise.all([
         filter(supabase.from("prospects").select("*", { count: "exact", head: true })),
         filter(supabase.from("call_logs").select("*", { count: "exact", head: true })),
         filter(supabase.from("prospects").select("*", { count: "exact", head: true })).eq("status", "interesse"),
@@ -34,13 +34,24 @@ function useStats(scope: "mine" | "all", userId?: string) {
             .order("scheduled_at", { ascending: true })
             .limit(5),
         ),
+        // Pour calculer le nombre de prospects "déjà appelés" — distinct prospect_id dans call_logs
+        filter(supabase.from("call_logs").select("prospect_id")),
+        // Tous les prospects pour comparer
+        filter(supabase.from("prospects").select("id")),
       ]);
+      const calledIds = new Set<string>(((allCalls.data || []) as any[]).map((c: any) => c.prospect_id));
+      const allIds = new Set<string>(((allProspects.data || []) as any[]).map((p: any) => p.id));
+      const calledCount = Array.from(calledIds).filter((id) => allIds.has(id)).length;
+      const totalProspects = prospects.count ?? 0;
+      const uncalledCount = Math.max(0, totalProspects - calledCount);
       return {
-        prospects: prospects.count ?? 0,
+        prospects: totalProspects,
         calls: calls.count ?? 0,
         interested: interested.count ?? 0,
         converted: converted.count ?? 0,
         upcoming: followups.data ?? [],
+        calledCount,
+        uncalledCount,
       };
     },
   });
@@ -115,6 +126,23 @@ function StatsView({ scope, userId }: { scope: "mine" | "all"; userId?: string }
         <StatCard icon={PhoneCall} label="Appels effectués" value={data.calls} color="bg-violet-500/15 text-violet-600" />
         <StatCard icon={Star} label="Intéressés" value={data.interested} color="bg-amber-500/15 text-amber-600" />
         <StatCard icon={Trophy} label="Convertis" value={data.converted} color="bg-emerald-500/15 text-emerald-600" />
+      </div>
+
+      {/* Suivi des appels — état clair de qui a été contacté */}
+      <div>
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
+          <PhoneCall className="h-3.5 w-3.5" /> Suivi des appels
+        </h2>
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+          <StatCard icon={PhoneCall} label="Prospects appelés" value={data.calledCount} color="bg-emerald-500/15 text-emerald-600" />
+          <StatCard icon={PhoneOff} label="Pas encore appelés" value={data.uncalledCount} color="bg-rose-500/15 text-rose-600" />
+          <StatCard
+            icon={TrendingUp}
+            label="Taux de couverture"
+            value={`${data.prospects > 0 ? Math.round((data.calledCount / data.prospects) * 100) : 0}%`}
+            color="bg-violet-500/15 text-violet-600"
+          />
+        </div>
       </div>
 
       {/* KPIs Emails & Workflows */}

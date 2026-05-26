@@ -167,6 +167,37 @@ function ProspectDetail() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Toggle rapide "appelé" / "pas appelé" pour le badge du header.
+  // S'il y a au moins 1 appel logué → on supprime tout (revient à "non appelé").
+  // Sinon → on crée une trace minimale.
+  const hasBeenCalled = !!(calls && calls.length > 0);
+  const lastCalledAt = calls && calls.length > 0 ? calls[0].called_at : null;
+  const toggleCalled = useMutation({
+    mutationFn: async () => {
+      if (hasBeenCalled) {
+        const { error } = await supabase.from("call_logs").delete().eq("prospect_id", id);
+        if (error) throw error;
+        return "uncalled";
+      } else {
+        const { error } = await supabase.from("call_logs").insert({
+          prospect_id: id,
+          owner_id: user!.id,
+          called_at: new Date().toISOString(),
+          outcome: "logged_quick",
+        });
+        if (error) throw error;
+        return "called";
+      }
+    },
+    onSuccess: (action) => {
+      qc.invalidateQueries({ queryKey: ["calls", id] });
+      qc.invalidateQueries({ queryKey: ["all-calls-list"] });
+      qc.invalidateQueries({ queryKey: ["last-contacts-list"] });
+      toast.success(action === "called" ? "Marqué comme appelé ✓" : "Marqué comme non appelé");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
   const addFollowUp = useMutation({
     mutationFn: async (form: FormData) => {
       const raw = Object.fromEntries(form.entries());
@@ -240,8 +271,33 @@ function ProspectDetail() {
             <Link to="/prospects"><ArrowLeft className="h-4 w-4" /></Link>
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">{prospect.first_name} {prospect.last_name}</h1>
-            {prospect.company && <p className="text-muted-foreground">{prospect.company}</p>}
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-2xl font-bold">{prospect.first_name} {prospect.last_name}</h1>
+              {/* Badge cliquable « Appelé / Pas appelé » — toujours visible dans le header */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (hasBeenCalled) {
+                    if (!confirm("Annuler le marquage 'appelé' pour ce prospect ?")) return;
+                  }
+                  toggleCalled.mutate();
+                }}
+                disabled={toggleCalled.isPending}
+                title={hasBeenCalled
+                  ? (lastCalledAt ? `Dernier appel : ${format(new Date(lastCalledAt), "PPp", { locale: fr })} — cliquer pour annuler` : "Cliquer pour annuler")
+                  : "Cliquer pour marquer comme appelé"}
+                className={cn(
+                  "inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border transition cursor-pointer",
+                  hasBeenCalled
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900 dark:hover:bg-emerald-950/60"
+                    : "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900 dark:hover:bg-rose-950/60"
+                )}
+              >
+                <PhoneCall className="h-3.5 w-3.5" />
+                {hasBeenCalled ? "Appelé" : "Pas encore appelé"}
+              </button>
+            </div>
+            {prospect.company && <p className="text-muted-foreground mt-1">{prospect.company}</p>}
             <p className="text-xs text-muted-foreground mt-1">Géré par {profileName(prospect.owner_id)}</p>
           </div>
         </div>

@@ -138,7 +138,7 @@ function ProspectsPage() {
     queryFn: async () => {
       const { data } = await supabase
         .from("call_logs")
-        .select("prospect_id, called_at")
+        .select("id, prospect_id, called_at")
         .order("called_at", { ascending: false });
       return data || [];
     },
@@ -158,6 +158,35 @@ function ProspectsPage() {
     const days = (Date.now() - new Date(ts).getTime()) / (24 * 60 * 60 * 1000);
     return days <= 14 ? "recent" : "stale";
   };
+
+  // ─── Toggle appelé / pas appelé en 1 clic ───
+  const toggleCalled = useMutation({
+    mutationFn: async (prospectId: string) => {
+      const existingTs = lastCallMap.get(prospectId);
+      if (existingTs) {
+        // Déjà appelé → on supprime TOUS les appels de ce prospect pour le marquer "non appelé"
+        const { error } = await supabase.from("call_logs").delete().eq("prospect_id", prospectId);
+        if (error) throw error;
+        return { action: "uncalled" };
+      } else {
+        // Jamais appelé → on crée une trace minimale
+        const { error } = await supabase.from("call_logs").insert({
+          prospect_id: prospectId,
+          owner_id: user!.id,
+          called_at: new Date().toISOString(),
+          outcome: "logged_quick",
+        });
+        if (error) throw error;
+        return { action: "called" };
+      }
+    },
+    onSuccess: (res) => {
+      toast.success(res.action === "called" ? "Marqué comme appelé ✓" : "Marqué comme non appelé");
+      qc.invalidateQueries({ queryKey: ["all-calls-list"] });
+      qc.invalidateQueries({ queryKey: ["last-contacts-list"] });
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
 
   // Vérification en direct des doublons (email / téléphone / site) — debounce 400ms
   useEffect(() => {
@@ -516,26 +545,42 @@ function ProspectsPage() {
                     <TableCell className="text-muted-foreground">{p.company || "—"}</TableCell>
                     <TableCell>
                       {bucket === "never" ? (
-                        <span className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900">
+                        <button
+                          type="button"
+                          onClick={() => toggleCalled.mutate(p.id)}
+                          disabled={toggleCalled.isPending}
+                          title="Cliquer pour marquer comme appelé"
+                          className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900 hover:bg-rose-100 dark:hover:bg-rose-950/60 transition cursor-pointer"
+                        >
                           <PhoneOff className="h-3 w-3" />
                           Jamais
-                        </span>
+                        </button>
                       ) : bucket === "recent" ? (
-                        <span
-                          className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900"
-                          title={lastCallAt ? format(new Date(lastCallAt), "PPp", { locale: fr }) : ""}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm("Annuler le marquage 'appelé' pour ce prospect ?")) toggleCalled.mutate(p.id);
+                          }}
+                          disabled={toggleCalled.isPending}
+                          title={(lastCallAt ? `Appelé le ${format(new Date(lastCallAt), "PPp", { locale: fr })}\n` : "") + "Cliquer pour annuler"}
+                          className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900 hover:bg-emerald-100 dark:hover:bg-emerald-950/60 transition cursor-pointer"
                         >
                           <PhoneIncoming className="h-3 w-3" />
                           {lastCallAt && formatDistanceToNow(new Date(lastCallAt), { addSuffix: true, locale: fr })}
-                        </span>
+                        </button>
                       ) : (
-                        <span
-                          className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900"
-                          title={lastCallAt ? format(new Date(lastCallAt), "PPp", { locale: fr }) : ""}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm("Annuler le marquage 'appelé' pour ce prospect ?")) toggleCalled.mutate(p.id);
+                          }}
+                          disabled={toggleCalled.isPending}
+                          title={(lastCallAt ? `Dernier appel : ${format(new Date(lastCallAt), "PPp", { locale: fr })}\n` : "") + "Cliquer pour annuler"}
+                          className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900 hover:bg-amber-100 dark:hover:bg-amber-950/60 transition cursor-pointer"
                         >
                           <PhoneCall className="h-3 w-3" />
                           {lastCallAt && formatDistanceToNow(new Date(lastCallAt), { addSuffix: true, locale: fr })}
-                        </span>
+                        </button>
                       )}
                     </TableCell>
                     <TableCell>
