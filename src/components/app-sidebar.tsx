@@ -14,6 +14,7 @@ import {
   Sparkles,
   Workflow,
   Headphones,
+  Target,
 } from "lucide-react";
 import {
   Sidebar,
@@ -103,6 +104,7 @@ export function AppSidebar() {
     { title: "Templates", url: "/templates", icon: Sparkles, badge: 0 },
     { title: "Workflows", url: "/workflows", icon: Workflow, badge: 0 },
     { title: "Scripts d'appel", url: "/scripts", icon: Headphones, badge: 0 },
+    { title: "Apollo", url: "/apollo", icon: Target, badge: 0 },
     { title: "Mon profil", url: "/profil", icon: User, badge: 0 },
   ];
   if (role === "admin") {
