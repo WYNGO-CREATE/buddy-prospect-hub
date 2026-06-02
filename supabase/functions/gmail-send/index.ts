@@ -109,8 +109,15 @@ Deno.serve(async (req) => {
     const htmlBody = buildEmailHtml(body, sigData);
     const textBody = buildEmailText(body, sigData);
 
+    // ─── Construction du From avec nom d'affichage ───
+    // Format RFC 5322 : "Nom" <email>. Indispensable pour la délivrabilité
+    // (les anti-spam pénalisent fortement un From "email brut" sans display name).
+    const fromDisplayName = sigData.agencyName || sigData.senderName || "Wyngo";
+    const encodedFromName = `=?UTF-8?B?${btoa(unescape(encodeURIComponent(fromDisplayName)))}?=`;
+    const fromHeader = `${encodedFromName} <${account.email}>`;
+
     const raw = buildRawMultipartEmail({
-      from: account.email,
+      from: fromHeader,
       to,
       subject: subject || "",
       textBody,

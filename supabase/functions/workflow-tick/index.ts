@@ -154,8 +154,15 @@ async function executeStep(run: any, step: any, prospect: any, ownerProfile: any
     };
     const htmlBody = buildEmailHtml(body, sigData);
     const textBody = buildEmailText(body, sigData);
+
+    // ─── Construction du From avec nom d'affichage (RFC 5322) ───
+    // Format "Nom" <email> — indispensable pour la délivrabilité.
+    const fromDisplayName = sigData.agencyName || sigData.senderName || "Wyngo";
+    const encodedFromName = `=?UTF-8?B?${btoa(unescape(encodeURIComponent(fromDisplayName)))}?=`;
+    const fromHeader = `${encodedFromName} <${account.email}>`;
+
     const raw = buildRawMultipartEmail({
-      from: account.email,
+      from: fromHeader,
       to: prospect.email,
       subject,
       textBody,
