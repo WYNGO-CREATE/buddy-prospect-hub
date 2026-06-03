@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -16,9 +16,10 @@ import { Plus, Search, AlertTriangle, Download, Upload, PhoneCall, PhoneOff, Pho
 import { PROSPECT_STATUSES, STATUS_LABELS, STATUS_VARIANTS, SUGGESTION_TONE, suggestNextAction, type ProspectStatus } from "@/lib/crm";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { toCSV, downloadCSV, parseCSV } from "@/lib/csv";
+import { toCSV, downloadCSV } from "@/lib/csv";
 import { format, formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
+import { ImportCSVDialog } from "@/components/import-csv-dialog";
 
 type DuplicateMatch = {
   id: string;
@@ -64,8 +65,6 @@ function ProspectsPage() {
   const [duplicates, setDuplicates] = useState<DuplicateMatch[]>([]);
   const [pendingPayload, setPendingPayload] = useState<any | null>(null);
   const [checking, setChecking] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [importing, setImporting] = useState(false);
   // Vérification doublons en direct dans le formulaire
   const [liveEmail, setLiveEmail] = useState("");
   const [livePhone, setLivePhone] = useState("");
@@ -298,61 +297,8 @@ function ProspectsPage() {
     downloadCSV(`prospects-${format(new Date(), "yyyyMMdd")}.csv`, toCSV(rows, headers));
   }
 
-  async function handleImport(file: File) {
-    setImporting(true);
-    try {
-      const text = await file.text();
-      const rows = parseCSV(text);
-      if (rows.length === 0) { toast.error("CSV vide"); return; }
-      const headerMap: Record<string, string> = {
-        prenom: "first_name", "prénom": "first_name", first_name: "first_name", firstname: "first_name",
-        nom: "last_name", last_name: "last_name", lastname: "last_name",
-        societe: "company", "société": "company", company: "company", entreprise: "company",
-        email: "email", "e-mail": "email", mail: "email",
-        telephone: "phone", "téléphone": "phone", phone: "phone", tel: "phone",
-        site_web: "website", site: "website", website: "website", "site web": "website", url: "website",
-        source: "source",
-        notes: "notes", note: "notes",
-        tags: "tags", "étiquettes": "tags", etiquettes: "tags",
-      };
-      const payloads: any[] = [];
-      const errors: string[] = [];
-      for (const [i, row] of rows.entries()) {
-        const mapped: any = {};
-        for (const k in row) {
-          const target = headerMap[k];
-          if (target) mapped[target] = row[k];
-        }
-        if (!mapped.first_name || !mapped.last_name) {
-          errors.push(`Ligne ${i + 2}: prénom et nom requis`);
-          continue;
-        }
-        const tags = mapped.tags ? String(mapped.tags).split(",").map((t: string) => t.trim()).filter(Boolean) : [];
-        payloads.push({
-          first_name: mapped.first_name,
-          last_name: mapped.last_name,
-          company: mapped.company || null,
-          email: mapped.email || null,
-          phone: mapped.phone || null,
-          website: mapped.website || null,
-          source: mapped.source || null,
-          notes: mapped.notes || null,
-          tags,
-          owner_id: user!.id,
-        });
-      }
-      if (payloads.length === 0) { toast.error(errors[0] || "Aucune ligne valide"); return; }
-      const { error } = await supabase.from("prospects").insert(payloads);
-      if (error) throw error;
-      toast.success(`${payloads.length} prospect(s) importé(s)${errors.length ? ` — ${errors.length} ignoré(s)` : ""}`);
-      qc.invalidateQueries({ queryKey: ["prospects"] });
-    } catch (e: any) {
-      toast.error(e.message || "Erreur d'import");
-    } finally {
-      setImporting(false);
-      if (fileRef.current) fileRef.current.value = "";
-    }
-  }
+  // Note : l'import CSV est géré par <ImportCSVDialog /> (wizard avec
+  // détection auto Apollo/LinkedIn, dédup, mapping configurable, tags batch).
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -362,10 +308,11 @@ function ProspectsPage() {
           <p className="text-muted-foreground">Gérez vos contacts et leur statut</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => e.target.files?.[0] && handleImport(e.target.files[0])} />
-          <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()} disabled={importing}>
-            <Upload className="h-4 w-4 mr-2" /> {importing ? "Import…" : "Importer CSV"}
-          </Button>
+          <ImportCSVDialog>
+            <Button variant="outline" size="sm">
+              <Upload className="h-4 w-4 mr-2" /> Importer CSV
+            </Button>
+          </ImportCSVDialog>
           <Button variant="outline" size="sm" onClick={exportCSV}>
             <Download className="h-4 w-4 mr-2" /> Exporter
           </Button>
