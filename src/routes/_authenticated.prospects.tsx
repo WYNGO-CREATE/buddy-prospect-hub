@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Search, AlertTriangle, Download, Upload, PhoneCall, PhoneOff, PhoneIncoming } from "lucide-react";
+import { Plus, Search, AlertTriangle, Download, Upload, PhoneCall, PhoneOff, PhoneIncoming, Trash2 } from "lucide-react";
 import { PROSPECT_STATUSES, STATUS_LABELS, STATUS_VARIANTS, SUGGESTION_TONE, suggestNextAction, type ProspectStatus } from "@/lib/crm";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -277,6 +277,21 @@ function ProspectsPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Suppression d'un prospect (cascade : call_logs, follow_ups, messages, etc.
+  // sont supprimés grâce aux FK ON DELETE CASCADE déclarées dans le schéma).
+  const deleteProspect = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("prospects").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["prospects"] });
+      qc.invalidateQueries({ queryKey: ["imported-sirets"] });
+      toast.success("Prospect supprimé");
+    },
+    onError: (e: Error) => toast.error("Suppression impossible", { description: e.message }),
+  });
+
   function exportCSV() {
     if (!prospects || prospects.length === 0) { toast.error("Rien à exporter"); return; }
     const rows = prospects.map((p) => ({
@@ -461,6 +476,7 @@ function ProspectsPage() {
                   <TableHead>Suggestion</TableHead>
                   {role === "admin" && scope === "team" && <TableHead>Propriétaire</TableHead>}
                   <TableHead>Statut</TableHead>
+                  <TableHead className="w-12"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -577,6 +593,23 @@ function ProspectsPage() {
                           ))}
                         </SelectContent>
                       </Select>
+                    </TableCell>
+                    <TableCell>
+                      {/* Suppression du prospect (avec confirmation). */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm(`Supprimer définitivement « ${p.first_name} ${p.last_name} » ? Cette action est irréversible.`)) {
+                            deleteProspect.mutate(p.id);
+                          }
+                        }}
+                        disabled={deleteProspect.isPending}
+                        title="Supprimer ce prospect"
+                        className="p-1.5 rounded hover:bg-rose-100 dark:hover:bg-rose-950/50 text-muted-foreground hover:text-rose-700 dark:hover:text-rose-300 transition disabled:opacity-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </TableCell>
                   </TableRow>
                   );

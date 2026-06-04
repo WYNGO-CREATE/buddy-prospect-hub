@@ -42,6 +42,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/chasse")({
   component: ChassePage,
@@ -158,6 +159,8 @@ function ChassePage() {
   const [selectedSirens, setSelectedSirens] = useState<Set<string>>(new Set());
   const [checking, setChecking] = useState(false);
   const [progress, setProgress] = useState(0);
+  // Filtre : ne montrer que les prospects avec au moins un moyen de contact
+  const [onlyWithContact, setOnlyWithContact] = useState(true);
 
   // Test connexion Pappers
   const connectionTest = useQuery({
@@ -346,19 +349,29 @@ function ChassePage() {
   const addBulk = useMutation({
     mutationFn: async (selected: EnrichedResult[]) => {
       if (!user) throw new Error("Non connecté");
+
+      // Garde-fou : on n'importe JAMAIS un prospect sans email ni téléphone
+      const eligible = selected.filter(
+        (r) =>
+          (r.scraped_email || r.hunter_email || r.email) ||
+          (r.google_phone || r.telephone),
+      );
+      const skipped = selected.length - eligible.length;
+      if (eligible.length === 0) {
+        throw new Error(
+          "Aucun prospect sélectionné n'a d'email ni de téléphone. Les prospects sans coordonnées ne sont pas ajoutés.",
+        );
+      }
+
       const today = new Date().toISOString().slice(0, 10);
       const batchTag = `chasse_${today}`;
 
-      const payloads = selected.map((r) => {
-        // Le dirigeant principal devient le contact ; à défaut, on fallback sur le nom de l'entreprise
+      const payloads = eligible.map((r) => {
         const prenom = r.dirigeant_principal?.prenom?.trim() || "—";
         const nom = r.dirigeant_principal?.nom?.trim() || r.nom;
-        // Priorité : email scrapé > Hunter > email Pappers
-        const bestEmail = r.scraped_email || r.hunter_email || r.email || null;
-        // Priorité téléphone : Google Maps > Pappers (Google a souvent les numéros à jour)
-        const bestPhone = r.google_phone || r.telephone || null;
-        // Adresse Google Maps si dispo, sinon Pappers
-        const bestLocation =
+        const email = r.scraped_email || r.hunter_email || r.email || null;
+        const phone = r.google_phone || r.telephone || null;
+        const loc =
           r.google_address || [r.adresse, r.code_postal, r.ville].filter(Boolean).join(" ");
         return {
           owner_id: user.id,
@@ -366,10 +379,10 @@ function ChassePage() {
           last_name: nom,
           company: r.nom,
           title: r.dirigeant_principal?.qualite || null,
-          email: bestEmail,
-          phone: bestPhone,
+          email,
+          phone,
           website: r.website_url || null,
-          location: bestLocation,
+          location: loc,
           siret: r.siret,
           industry: r.libelle_naf,
           source: "pappers",
@@ -382,10 +395,14 @@ function ChassePage() {
 
       const { data, error } = await supabase.from("prospects").insert(payloads as never).select("id");
       if (error) throw new Error(error.message);
-      return data?.length ?? 0;
+      return { created: data?.length ?? 0, skipped };
     },
-    onSuccess: (count) => {
-      toast.success(`${count} prospect(s) ajouté(s) au CRM`);
+    onSuccess: ({ created, skipped }) => {
+      if (skipped > 0) {
+        toast.success(`${created} prospect(s) ajouté(s) — ${skipped} ignoré(s) sans coordonnées`);
+      } else {
+        toast.success(`${created} prospect(s) ajouté(s) au CRM`);
+      }
       setSelectedSirens(new Set());
       qc.invalidateQueries({ queryKey: ["imported-sirets"] });
       qc.invalidateQueries({ queryKey: ["prospects"] });
@@ -393,19 +410,30 @@ function ChassePage() {
     onError: (e: Error) => toast.error("Échec ajout", { description: e.message }),
   });
 
-  // ─── Résultats triés (cibles prime d'abord) ────────────────────────────
-  const sortedResults = useMemo(
-    () =>
-      [...results].sort(
-        (a, b) =>
-          STATUS_META[a.website_status].priority - STATUS_META[b.website_status].priority,
-      ),
-    [results],
-  );
+  // ─── Helpers : un prospect a-t-il un moyen de contact ? ───
+  const bestPhone = (r: EnrichedResult) => r.google_phone || r.telephone || null;
+  const bestEmail = (r: EnrichedResult) =>
+    r.scraped_email || r.hunter_email || r.email || null;
+  const hasContact = (r: EnrichedResult) => !!(bestPhone(r) || bestEmail(r));
+
+  // ─── Résultats triés (cibles prime d'abord) + filtre "avec contact" ────
+  const sortedResults = useMemo(() => {
+    const sorted = [...results].sort(
+      (a, b) =>
+        STATUS_META[a.website_status].priority - STATUS_META[b.website_status].priority,
+    );
+    if (onlyWithContact) {
+      return sorted.filter((r) => r.enriching || hasContact(r));
+    }
+    return sorted;
+  }, [results, onlyWithContact]);
 
   const counts = useMemo(() => {
-    const c = { no_website: 0, outdated: 0, has_website: 0, unknown: 0 };
-    for (const r of results) c[r.website_status]++;
+    const c = { no_website: 0, outdated: 0, has_website: 0, unknown: 0, with_contact: 0 };
+    for (const r of results) {
+      c[r.website_status]++;
+      if (hasContact(r)) c.with_contact++;
+    }
     return c;
   }, [results]);
 
@@ -425,6 +453,7 @@ function ChassePage() {
     const prime = sortedResults
       .filter((r) => r.website_status === "no_website" || r.website_status === "outdated")
       .filter((r) => !importedSirets.data?.has(r.siret ?? ""))
+      .filter((r) => hasContact(r)) // n'ajoute jamais sans coordonnées
       .map((r) => r.siren);
     setSelectedSirens(new Set(prime));
   };
@@ -617,7 +646,7 @@ function ChassePage() {
 
           {/* Toolbar */}
           <div className="flex items-center justify-between flex-wrap gap-2">
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-center flex-wrap">
               <Button variant="outline" size="sm" onClick={selectAllPrime}>
                 <Sparkles className="h-3.5 w-3.5 mr-1.5" />
                 Tout sélectionner (prime + obsolète)
@@ -627,6 +656,15 @@ function ChassePage() {
                   Désélectionner
                 </Button>
               )}
+              <label className="inline-flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none ml-2">
+                <input
+                  type="checkbox"
+                  checked={onlyWithContact}
+                  onChange={(e) => setOnlyWithContact(e.target.checked)}
+                  className="rounded"
+                />
+                Seulement avec contact ({counts.with_contact}/{results.length})
+              </label>
             </div>
             {selectedSirens.size > 0 && (
               <Button
@@ -672,6 +710,37 @@ function ChassePage() {
                           <Badge variant="outline" className={meta.cls}>
                             {meta.emoji} {meta.label}
                           </Badge>
+                          {/* Badges contact : vert si trouvé, rouge si manquant */}
+                          {!r.enriching && (
+                            <>
+                              <Badge
+                                variant="outline"
+                                title={bestPhone(r) ? `Téléphone : ${bestPhone(r)}` : "Aucun téléphone trouvé"}
+                                className={cn(
+                                  "text-[10px] gap-1",
+                                  bestPhone(r)
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-300"
+                                    : "bg-rose-50 text-rose-700 border-rose-300",
+                                )}
+                              >
+                                <Phone className="h-3 w-3" />
+                                {bestPhone(r) ? "OK" : "—"}
+                              </Badge>
+                              <Badge
+                                variant="outline"
+                                title={bestEmail(r) ? `Email : ${bestEmail(r)}` : "Aucun email trouvé"}
+                                className={cn(
+                                  "text-[10px] gap-1",
+                                  bestEmail(r)
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-300"
+                                    : "bg-rose-50 text-rose-700 border-rose-300",
+                                )}
+                              >
+                                <Mail className="h-3 w-3" />
+                                {bestEmail(r) ? "OK" : "—"}
+                              </Badge>
+                            </>
+                          )}
                           {isImported && (
                             <Badge variant="outline" className="text-xs">
                               déjà dans CRM

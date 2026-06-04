@@ -1,32 +1,36 @@
 /**
- * ─── Website Checker — Détecteur de TPE sans site web ───
+ * ─── Website Checker v2 — Détecteur de TPE sans site (ou avec un site moisi) ───
  *
- * Cœur du modèle Wyngo : pour chaque entreprise, on détermine si elle a un
- * site web et, si oui, on évalue sa qualité (moderne / obsolète).
+ * Pour chaque entreprise on détermine si elle a un site, et si oui on évalue
+ * sa qualité. Plus on a de signaux, plus on est sûr de notre verdict.
  *
- * Stratégie en 3 niveaux :
- *   1. Si une URL est fournie    → on la teste directement (HEAD puis GET)
- *   2. Si pas d'URL, on essaie   → 5 patterns de domaine basés sur le nom
- *      (nomentreprise.fr, .com, nom-entreprise.fr, etc.)
- *   3. Si rien ne répond         → "no_website" = CIBLE PRIME 🔥
+ * Stratégie :
+ *   1. Si une URL est fournie    → on la teste directement
+ *   2. Sinon                     → on devine 5 patterns (nomentreprise.fr, etc.)
+ *   3. Une fois la home OK       → on tente aussi /contact pour récolter
+ *                                 plus de signaux (lastmod, copyright, etc.)
  *
- * Pour les sites qui répondent, on évalue :
- *   • HTTPS ?
- *   • Responsive meta viewport ?
- *   • Pas de framework JS moderne détecté → vieux site
- *   • Date de copyright dans le HTML
+ * Pour un site qui répond, on évalue ~15 signaux :
+ *   • HTTPS + SSL valide
+ *   • Meta viewport responsive
+ *   • Open Graph / Twitter Card meta (= SEO moderne)
+ *   • Favicon
+ *   • Web fonts modernes (Google Fonts, custom)
+ *   • Framework JS moderne (React, Vue, etc.)
+ *   • Tailwind / CSS moderne
+ *   • CMS détecté (WordPress version, Wix, Joomla legacy…)
+ *   • Header Last-Modified pas trop vieux
+ *   • Copyright year récent
+ *   • Balises HTML legacy (<font>, <center>, <marquee>)
+ *   • Table-based layout
+ *   • Page parking ou erreur explicite
+ *   • Taille du HTML (très petite = squelette)
+ *   • Présence d'un formulaire de contact moderne
  *
- * Classification :
- *   • no_website    → pas de site trouvé           (cible #1)
- *   • outdated      → site présent mais vieux/HTTP (cible #2)
- *   • has_website   → site moderne, à skip
- *   • unknown       → erreur réseau, à retester
- *
- * Body POST attendu :
- *   { company_name?: string, hint_url?: string }
- *
- * Réponse :
- *   { status, url?: string | null, score: 0-100, signals: string[] }
+ * Classification finale :
+ *   • no_website    → score 0-25  (cible prime 🔥)
+ *   • outdated      → score 26-55 (cible secondaire 🟡)
+ *   • has_website   → score 56+   (site OK, à skip ✅)
  */
 
 const corsHeaders = {
@@ -44,13 +48,10 @@ function json(body: unknown, status = 200) {
 
 type Status = "has_website" | "outdated" | "no_website" | "unknown";
 
-// Petite fenêtre de temps pour ne pas bloquer la fonction sur un domaine lent.
-const FETCH_TIMEOUT_MS = 5000;
+const FETCH_TIMEOUT_MS = 6000;
+const USER_AGENT = "WyngoBot/1.0 (+https://wyngo.fr)";
 
-/**
- * Normalise un nom d'entreprise pour générer des candidats de domaine.
- * "Boulangerie Martin & Fils" → ["boulangeriemartinetfils", "boulangerie-martin-et-fils", "martin"]
- */
+/** Génère 5 patterns de domaine probables à partir du nom de l'entreprise. */
 function generateDomainCandidates(companyName: string): string[] {
   const lower = companyName
     .toLowerCase()
@@ -60,13 +61,10 @@ function generateDomainCandidates(companyName: string): string[] {
     .replace(/[^a-z0-9\s-]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-
   if (!lower) return [];
 
-  const collapsed = lower.replace(/\s/g, ""); // "boulangeriemartinetfils"
-  const hyphenated = lower.replace(/\s/g, "-"); // "boulangerie-martin-et-fils"
-
-  // Mot principal (le plus long, > 3 chars, pour deviner ex: "martin" pour boulangerie-martin)
+  const collapsed = lower.replace(/\s/g, "");
+  const hyphenated = lower.replace(/\s/g, "-");
   const words = lower.split(" ").filter((w) => w.length > 3);
   const dominantWord = words.sort((a, b) => b.length - a.length)[0];
 
@@ -76,28 +74,35 @@ function generateDomainCandidates(companyName: string): string[] {
     candidates.push(`https://${root}.fr`);
     candidates.push(`https://www.${root}.com`);
   }
-  // Dédup en gardant l'ordre
   return [...new Set(candidates)];
 }
 
-/**
- * Tente un HEAD puis GET sur une URL, avec timeout.
- * Retourne { ok, status, html } ou null si tout échoue.
- */
-async function tryFetch(url: string): Promise<{ status: number; html?: string } | null> {
+type FetchResult = {
+  status: number;
+  html?: string;
+  headers?: Headers;
+  finalUrl?: string;
+};
+
+/** Fetch avec timeout, GET (HEAD est trop souvent mal géré). */
+async function tryFetch(url: string): Promise<FetchResult | null> {
   const ctrl = new AbortController();
   const timeout = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   try {
-    // GET direct (plus fiable que HEAD qui est souvent mal géré par les vieux sites)
     const res = await fetch(url, {
       method: "GET",
       signal: ctrl.signal,
       redirect: "follow",
-      headers: { "User-Agent": "WyngoBot/1.0 (+https://wyngo.fr)" },
+      headers: { "User-Agent": USER_AGENT },
     });
     if (!res.ok) return { status: res.status };
     const text = await res.text();
-    return { status: res.status, html: text.slice(0, 30_000) };
+    return {
+      status: res.status,
+      html: text.slice(0, 60_000),
+      headers: res.headers,
+      finalUrl: res.url,
+    };
   } catch {
     return null;
   } finally {
@@ -106,92 +111,205 @@ async function tryFetch(url: string): Promise<{ status: number; html?: string } 
 }
 
 /**
- * Analyse le HTML d'un site qui répond pour déterminer s'il est moderne ou obsolète.
- * Renvoie un score 0-100 (100 = très moderne).
+ * Évalue la qualité d'un site. Score 0-100.
+ * Combine signaux de la home + de la page /contact si trouvée.
  */
-function analyzeHtml(url: string, html: string): { score: number; signals: string[] } {
+function evaluateSite(
+  url: string,
+  homeHtml: string,
+  homeHeaders: Headers | undefined,
+  contactHtml: string | undefined,
+): { score: number; signals: string[] } {
   const signals: string[] = [];
   let score = 50; // neutre par défaut
-
+  const html = (homeHtml + " " + (contactHtml || "")).slice(0, 80_000);
   const lower = html.toLowerCase();
 
-  // HTTPS = +15
+  // ─── HTTPS + SSL ──
   if (url.startsWith("https://")) {
-    score += 15;
+    score += 12;
     signals.push("https");
   } else {
     score -= 20;
     signals.push("http_only");
   }
 
-  // Viewport responsive = +15
-  if (/<meta[^>]+name=["']viewport["']/i.test(html)) {
-    score += 15;
+  // ─── Responsive ──
+  if (/<meta[^>]+name=["']viewport["'][^>]+width=device-width/i.test(html)) {
+    score += 12;
     signals.push("responsive");
+  } else if (/<meta[^>]+name=["']viewport["']/i.test(html)) {
+    score += 4;
+    signals.push("partial_viewport");
   } else {
-    score -= 15;
+    score -= 12;
     signals.push("not_responsive");
   }
 
-  // Framework JS moderne = +10
-  if (/react|next|vue|nuxt|svelte|astro|gatsby/i.test(lower)) {
+  // ─── Open Graph / Twitter Card (SEO moderne) ──
+  if (/<meta[^>]+property=["']og:/i.test(html)) {
+    score += 5;
+    signals.push("open_graph");
+  }
+  if (/<meta[^>]+name=["']twitter:/i.test(html)) {
+    score += 3;
+    signals.push("twitter_card");
+  }
+
+  // ─── Favicon ──
+  if (/<link[^>]+rel=["']?(?:shortcut )?icon["']?/i.test(html)) {
+    score += 3;
+    signals.push("favicon");
+  }
+
+  // ─── Web fonts modernes ──
+  if (/fonts\.(googleapis|gstatic)\.com|@font-face/i.test(html)) {
+    score += 5;
+    signals.push("modern_fonts");
+  }
+
+  // ─── Framework JS ──
+  if (/react|next\.js|nuxt|vue|svelte|astro|gatsby|remix/i.test(lower)) {
     score += 10;
     signals.push("modern_framework");
+  } else if (/jquery-?(?:1|2)\.|jquery\.min\.js/i.test(lower)) {
+    // jQuery 1/2 = très ancien
+    score -= 8;
+    signals.push("legacy_jquery");
   }
 
-  // Tailwind / CSS moderne = +5
-  if (/tailwind|css-in-js/i.test(lower)) {
+  // ─── Tailwind / CSS moderne ──
+  if (/tailwind|cdn\.tailwindcss|--tw-/i.test(lower)) {
     score += 5;
-    signals.push("modern_css");
+    signals.push("tailwind");
   }
 
-  // Indicateurs vieux site = -20 cumulables
-  if (/<font\s|<center>|<marquee>|<blink>/i.test(html)) {
-    score -= 30;
-    signals.push("legacy_html_tags");
-  }
-  if (/<table[^>]*(?:cellpadding|border)/i.test(html)) {
-    score -= 10;
-    signals.push("table_layout");
-  }
-  if (/iframe.*src=["']https?:\/\/[^"']*facebook/i.test(html)) {
-    score -= 5;
-    signals.push("facebook_embed");
-  }
-
-  // Date de copyright (extrait l'année)
-  const copyrightYearMatch = html.match(/©\s*(\d{4})|copyright[^<]*?(\d{4})/i);
-  if (copyrightYearMatch) {
-    const year = parseInt(copyrightYearMatch[1] || copyrightYearMatch[2], 10);
-    const currentYear = new Date().getFullYear();
-    if (year < currentYear - 3) {
-      score -= 15;
-      signals.push(`old_copyright_${year}`);
+  // ─── CMS detection ──
+  if (/wp-content|wordpress/i.test(lower)) {
+    // WordPress présent — bon ou mauvais selon la version
+    const wpVer = html.match(/<meta[^>]+name=["']generator["'][^>]+wordpress\s+([\d.]+)/i);
+    if (wpVer) {
+      const major = parseInt(wpVer[1].split(".")[0], 10);
+      if (major >= 6) {
+        score += 4;
+        signals.push(`wp_${wpVer[1]}_recent`);
+      } else {
+        score -= 12;
+        signals.push(`wp_${wpVer[1]}_outdated`);
+      }
     } else {
-      score += 5;
-      signals.push(`recent_copyright_${year}`);
+      // WordPress sans version explicite — neutre
+      signals.push("wordpress");
+    }
+  }
+  if (/wix\.com|wixstatic/i.test(lower)) {
+    score += 2;
+    signals.push("wix");
+  }
+  if (/<meta[^>]+name=["']generator["'][^>]+joomla\s+(?:1|2)\./i.test(html)) {
+    score -= 20;
+    signals.push("joomla_legacy");
+  }
+
+  // ─── Last-Modified header ──
+  const lastMod = homeHeaders?.get("last-modified");
+  if (lastMod) {
+    const lastModDate = new Date(lastMod).getTime();
+    if (!isNaN(lastModDate)) {
+      const ageYears = (Date.now() - lastModDate) / (365 * 24 * 3600 * 1000);
+      if (ageYears > 3) {
+        score -= 15;
+        signals.push(`lastmod_${Math.round(ageYears)}y_ago`);
+      } else if (ageYears < 1) {
+        score += 6;
+        signals.push("lastmod_recent");
+      }
     }
   }
 
-  // Pages d'erreur explicites = no_website
-  if (/page not found|404|domain.*expired|cette page n.est pas/i.test(html.slice(0, 2000))) {
-    score = 0;
-    signals.push("error_page");
+  // ─── Copyright year ──
+  const copyMatch = html.match(/©\s*(\d{4})(?:\s*[-–]\s*(\d{4}))?|copyright[^<]*?(\d{4})(?:\s*[-–]\s*(\d{4}))?/i);
+  if (copyMatch) {
+    // On prend l'année la plus récente du span de copyright
+    const years = [copyMatch[1], copyMatch[2], copyMatch[3], copyMatch[4]]
+      .filter(Boolean)
+      .map((y) => parseInt(y, 10))
+      .filter((y) => y > 1995 && y < 2100);
+    const latestYear = Math.max(...years, 0);
+    if (latestYear) {
+      const currentYear = new Date().getFullYear();
+      if (latestYear < currentYear - 3) {
+        score -= 15;
+        signals.push(`copyright_${latestYear}`);
+      } else if (latestYear >= currentYear - 1) {
+        score += 5;
+        signals.push(`copyright_${latestYear}`);
+      }
+    }
   }
 
-  // Pages parking (1and1, godaddy, ovh parking, etc.)
-  if (/parking|domain.*sale|under construction|en construction/i.test(html.slice(0, 2000))) {
+  // ─── Balises HTML legacy ──
+  if (/<font\s|<center>|<marquee>|<blink>|<basefont/i.test(html)) {
+    score -= 25;
+    signals.push("legacy_html_tags");
+  }
+  // Table-based layout (présence forte de table cellpadding/border attrs)
+  const tableLayouts = (html.match(/<table[^>]*(?:cellpadding|cellspacing|border=)/gi) || []).length;
+  if (tableLayouts > 3) {
+    score -= 12;
+    signals.push("table_layout");
+  }
+
+  // ─── Iframes Facebook / sites encartés à l'ancienne ──
+  if (/<iframe[^>]+src=["']https?:\/\/[^"']*facebook\.com\/plugins/i.test(html)) {
+    score -= 3;
+    signals.push("fb_iframe");
+  }
+
+  // ─── Formulaire de contact moderne (présent si page /contact OK) ──
+  if (contactHtml && /<input[^>]+type=["']email["']/i.test(contactHtml)) {
+    score += 4;
+    signals.push("contact_form_modern");
+  }
+
+  // ─── Pages d'erreur / parking ──
+  const headSlice = html.slice(0, 4000).toLowerCase();
+  if (/(?:^|\s)(?:page not found|page non trouvée|cette page n'?existe|page d'erreur)\b/i.test(headSlice) ||
+      /\b404\b.{0,40}(?:not found|introuvable)/i.test(headSlice)) {
+    score = 5;
+    signals.push("error_page");
+  }
+  if (/(?:domain\s+parking|en\s+construction|under\s+construction|coming\s+soon|site\s+(?:bientôt|prochainement)|achetez\s+ce\s+domaine|buy this domain)/i.test(headSlice)) {
     score = 5;
     signals.push("parking_page");
+  }
+
+  // ─── Taille du HTML (très petit = pas de vrai contenu) ──
+  if (homeHtml.length < 1500) {
+    score -= 15;
+    signals.push("very_small_html");
+  } else if (homeHtml.length > 10000) {
+    score += 3;
+    signals.push("rich_content");
   }
 
   return { score: Math.max(0, Math.min(100, score)), signals };
 }
 
 function scoreToStatus(score: number): Status {
-  if (score >= 60) return "has_website";
-  if (score >= 20) return "outdated";
-  return "no_website"; // 0-19 = essentiellement erreur/parking
+  if (score >= 56) return "has_website";
+  if (score >= 26) return "outdated";
+  return "no_website";
+}
+
+/** Sélectionne le 1er candidat qui répond, suit les redirections. */
+async function findResponsiveCandidate(urls: string[]): Promise<{ url: string; res: FetchResult } | null> {
+  for (const url of urls) {
+    const res = await tryFetch(url);
+    if (!res || res.status >= 400 || !res.html) continue;
+    return { url: res.finalUrl || url, res };
+  }
+  return null;
 }
 
 Deno.serve(async (req) => {
@@ -204,48 +322,55 @@ Deno.serve(async (req) => {
       return json({ error: "company_name ou hint_url requis" }, 400);
     }
 
-    // 1. URL hint fournie → on l'essaie en priorité
+    // 1. Liste de candidats : hint en priorité, puis devine
     const candidates: string[] = [];
     if (hint_url) {
-      const url = hint_url.startsWith("http") ? hint_url : `https://${hint_url}`;
-      candidates.push(url);
+      const u = hint_url.startsWith("http") ? hint_url : `https://${hint_url}`;
+      candidates.push(u);
     }
-    if (company_name) {
-      candidates.push(...generateDomainCandidates(company_name));
-    }
+    if (company_name) candidates.push(...generateDomainCandidates(company_name));
 
-    // 2. Essai séquentiel (on s'arrête au premier qui répond)
-    for (const url of candidates) {
-      const result = await tryFetch(url);
-      if (!result) continue;
-
-      if (result.status >= 400) continue; // 404 / 500 / etc, on essaie le suivant
-
-      if (!result.html) {
-        // 200 mais pas de HTML → probable redirection bizarre
-        return json({
-          status: "has_website" as Status,
-          url,
-          score: 50,
-          signals: ["no_html_body"],
-        });
-      }
-
-      const { score, signals } = analyzeHtml(url, result.html);
+    // 2. On tente de trouver une URL qui répond
+    const found = await findResponsiveCandidate(candidates);
+    if (!found) {
+      // Personne ne répond → CIBLE PRIME
       return json({
-        status: scoreToStatus(score),
-        url,
-        score,
-        signals,
+        status: "no_website" as Status,
+        url: null,
+        score: 0,
+        signals: ["no_candidates_responded"],
       });
     }
 
-    // 3. Aucun candidat n'a répondu → CIBLE PRIME 🔥
+    // 3. On tente aussi /contact pour récolter plus de signaux
+    let contactHtml: string | undefined;
+    try {
+      const origin = new URL(found.url).origin;
+      for (const path of ["/contact", "/contact.html", "/contactez-nous", "/nous-contacter"]) {
+        const r = await tryFetch(`${origin}${path}`);
+        if (r?.html && r.status < 400) {
+          contactHtml = r.html;
+          break;
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+
+    // 4. Évalue
+    const { score, signals } = evaluateSite(
+      found.url,
+      found.res.html!,
+      found.res.headers,
+      contactHtml,
+    );
+
     return json({
-      status: "no_website" as Status,
-      url: null,
-      score: 0,
-      signals: ["no_candidates_responded"],
+      status: scoreToStatus(score),
+      url: found.url,
+      score,
+      signals,
+      checked_contact_page: !!contactHtml,
     });
   } catch (e) {
     console.error("[website-checker]", e);
