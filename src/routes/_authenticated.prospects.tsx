@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Search, AlertTriangle, Download, Upload, PhoneCall, PhoneOff, PhoneIncoming, Trash2 } from "lucide-react";
+import { Plus, Search, AlertTriangle, Download, Upload, PhoneCall, PhoneOff, PhoneIncoming, Trash2, ChevronRight } from "lucide-react";
 import { PROSPECT_STATUSES, STATUS_LABELS, STATUS_VARIANTS, SUGGESTION_TONE, suggestNextAction, type ProspectStatus } from "@/lib/crm";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -57,7 +57,6 @@ const prospectSchema = z.object({
 function ProspectsPage() {
   const { user, role } = useAuth();
   const qc = useQueryClient();
-  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [callFilter, setCallFilter] = useState<"all" | "never" | "recent" | "stale">("all");
@@ -497,21 +496,13 @@ function ProspectsPage() {
                   const lastCallAt = lastCallMap.get(p.id);
                   const bucket = callBucket(p.id);
                   return (
-                  <TableRow
-                    key={p.id}
-                    onClick={() => navigate({ to: "/prospects/$id", params: { id: p.id } })}
-                    className="cursor-pointer hover:bg-accent/40 transition"
-                  >
+                  <TableRow key={p.id}>
                     <TableCell>
-                      {/* Le Link reste pour bénéficier de l'a11y + Cmd+clic pour ouvrir
-                          dans un nouvel onglet. Le onClick de la <TableRow> au-dessus rend
-                          la ligne entière cliquable pour les utilisateurs qui visent ailleurs
-                          que le nom (très petite zone quand le prénom est "—"). */}
+                      {/* Lien gros et clair vers la fiche, plus visible que l'ancien. */}
                       <Link
                         to="/prospects/$id"
                         params={{ id: p.id }}
-                        className="font-medium hover:underline"
-                        onClick={(e) => e.stopPropagation()}
+                        className="font-semibold text-foreground hover:text-primary hover:underline inline-flex items-center gap-1"
                       >
                         {p.first_name} {p.last_name}
                       </Link>
@@ -524,7 +515,7 @@ function ProspectsPage() {
                       {bucket === "never" ? (
                         <button
                           type="button"
-                          onClick={(e) => { e.stopPropagation(); toggleCalled.mutate(p.id); }}
+                          onClick={() => toggleCalled.mutate(p.id)}
                           disabled={toggleCalled.isPending}
                           title="Cliquer pour marquer comme appelé"
                           className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900 hover:bg-rose-100 dark:hover:bg-rose-950/60 transition cursor-pointer"
@@ -535,8 +526,7 @@ function ProspectsPage() {
                       ) : bucket === "recent" ? (
                         <button
                           type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
+                          onClick={() => {
                             if (confirm("Annuler le marquage 'appelé' pour ce prospect ?")) toggleCalled.mutate(p.id);
                           }}
                           disabled={toggleCalled.isPending}
@@ -549,8 +539,7 @@ function ProspectsPage() {
                       ) : (
                         <button
                           type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
+                          onClick={() => {
                             if (confirm("Annuler le marquage 'appelé' pour ce prospect ?")) toggleCalled.mutate(p.id);
                           }}
                           disabled={toggleCalled.isPending}
@@ -595,7 +584,7 @@ function ProspectsPage() {
                     {role === "admin" && scope === "team" && (
                       <TableCell className="text-xs text-muted-foreground">{profileMap.get(p.owner_id) || "—"}</TableCell>
                     )}
-                    <TableCell onClick={(e) => e.stopPropagation()}>
+                    <TableCell>
                       <Select
                         value={p.status}
                         onValueChange={(v) => updateStatus.mutate({ id: p.id, status: v as ProspectStatus })}
@@ -611,21 +600,33 @@ function ProspectsPage() {
                       </Select>
                     </TableCell>
                     <TableCell>
-                      {/* Suppression du prospect (avec confirmation). */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (confirm(`Supprimer définitivement « ${p.first_name} ${p.last_name} » ? Cette action est irréversible.`)) {
-                            deleteProspect.mutate(p.id);
-                          }
-                        }}
-                        disabled={deleteProspect.isPending}
-                        title="Supprimer ce prospect"
-                        className="p-1.5 rounded hover:bg-rose-100 dark:hover:bg-rose-950/50 text-muted-foreground hover:text-rose-700 dark:hover:text-rose-300 transition disabled:opacity-50"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        {/* Bouton "Ouvrir la fiche" → chevron très visible, navigation
+                            garantie via Link de TanStack Router (asChild pas dispo, on
+                            wrappe directement le Link comme un bouton). */}
+                        <Link
+                          to="/prospects/$id"
+                          params={{ id: p.id }}
+                          className="p-1.5 rounded hover:bg-primary/10 text-muted-foreground hover:text-primary transition"
+                          title="Ouvrir la fiche prospect"
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </Link>
+                        {/* Suppression du prospect (avec confirmation). */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm(`Supprimer définitivement « ${p.first_name} ${p.last_name} » ? Cette action est irréversible.`)) {
+                              deleteProspect.mutate(p.id);
+                            }
+                          }}
+                          disabled={deleteProspect.isPending}
+                          title="Supprimer ce prospect"
+                          className="p-1.5 rounded hover:bg-rose-100 dark:hover:bg-rose-950/50 text-muted-foreground hover:text-rose-700 dark:hover:text-rose-300 transition disabled:opacity-50"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </TableCell>
                   </TableRow>
                   );
