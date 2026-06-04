@@ -12,8 +12,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { ArrowLeft, PhoneCall, CalendarClock, History, Check, MessageSquare, Trash2, UserCog, Headphones, Mail, Globe, ExternalLink, Phone } from "lucide-react";
+import { ArrowLeft, PhoneCall, CalendarClock, History, Check, MessageSquare, Trash2, UserCog, Headphones, Mail, Globe, ExternalLink, Phone, Sparkles } from "lucide-react";
 import { CallModeDrawer } from "@/components/call-mode-drawer";
+import { PitchGeneratorDialog } from "@/components/pitch-generator-dialog";
 import { PROSPECT_STATUSES, STATUS_LABELS, STATUS_VARIANTS, EVENT_LABELS, type ProspectStatus } from "@/lib/crm";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -313,6 +314,20 @@ function ProspectDetail() {
             <Headphones className="h-4 w-4 mr-1.5" />
             Mode appel
           </Button>
+          {/* Génération de pitch cold ULTRA-personnalisé par IA */}
+          <PitchGeneratorDialog
+            prospectId={prospect.id}
+            prospectEmail={prospect.email}
+          >
+            <Button
+              variant="default"
+              size="sm"
+              className="bg-violet-600 hover:bg-violet-700 text-white"
+            >
+              <Sparkles className="h-4 w-4 mr-1.5" />
+              Pitch IA
+            </Button>
+          </PitchGeneratorDialog>
           {role === "admin" && (
             <Select value={prospect.owner_id} onValueChange={(v) => reassign.mutate(v)}>
               <SelectTrigger className="w-[180px]">
