@@ -636,8 +636,13 @@ function ComposeDialog({
       last_name: selectedProspect?.last_name,
       company: selectedProspect?.company,
       email: selectedProspect?.email,
+      phone: (selectedProspect as { phone?: string | null })?.phone ?? null,
+      website: (selectedProspect as { website?: string | null })?.website ?? null,
+      title: (selectedProspect as { title?: string | null })?.title ?? null,
+      location: (selectedProspect as { location?: string | null })?.location ?? null,
       sender_name: myProfile?.full_name,
       sender_email: myProfile?.email,
+      sender_phone: (myProfile as { phone?: string | null })?.phone ?? null,
     };
     setSubject(renderTemplate(tpl.subject, ctx));
     setContent(renderTemplate(tpl.body, ctx));

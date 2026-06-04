@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { ArrowLeft, PhoneCall, CalendarClock, History, Check, MessageSquare, Trash2, UserCog, Headphones } from "lucide-react";
+import { ArrowLeft, PhoneCall, CalendarClock, History, Check, MessageSquare, Trash2, UserCog, Headphones, Mail, Globe, ExternalLink, Phone } from "lucide-react";
 import { CallModeDrawer } from "@/components/call-mode-drawer";
 import { PROSPECT_STATUSES, STATUS_LABELS, STATUS_VARIANTS, EVENT_LABELS, type ProspectStatus } from "@/lib/crm";
 import { format } from "date-fns";
@@ -339,6 +339,83 @@ function ProspectDetail() {
         </div>
       </div>
 
+      {/* ─── Carte d'actions de contact rapides ───
+          Met en avant les 3 actions clés : appeler, écrire, voir le site.
+          Visible immédiatement à l'ouverture de la fiche, sans scroll. */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* Téléphone */}
+            <a
+              href={prospect.phone ? `tel:${prospect.phone}` : undefined}
+              className={cn(
+                "flex items-center gap-3 p-3 rounded-lg border transition",
+                prospect.phone
+                  ? "hover:bg-accent/50 cursor-pointer"
+                  : "opacity-50 cursor-not-allowed",
+              )}
+            >
+              <div className="size-10 rounded-full bg-emerald-100 dark:bg-emerald-950/40 flex items-center justify-center flex-shrink-0">
+                <Phone className="h-5 w-5 text-emerald-700 dark:text-emerald-300" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Téléphone</p>
+                <p className="font-semibold truncate">{prospect.phone || "Non renseigné"}</p>
+              </div>
+            </a>
+
+            {/* Email */}
+            <a
+              href={prospect.email ? `mailto:${prospect.email}` : undefined}
+              className={cn(
+                "flex items-center gap-3 p-3 rounded-lg border transition",
+                prospect.email
+                  ? "hover:bg-accent/50 cursor-pointer"
+                  : "opacity-50 cursor-not-allowed",
+              )}
+            >
+              <div className="size-10 rounded-full bg-blue-100 dark:bg-blue-950/40 flex items-center justify-center flex-shrink-0">
+                <Mail className="h-5 w-5 text-blue-700 dark:text-blue-300" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Email</p>
+                <p className="font-semibold truncate">{prospect.email || "Non renseigné"}</p>
+              </div>
+            </a>
+
+            {/* Site web */}
+            <a
+              href={prospect.website || undefined}
+              target="_blank"
+              rel="noreferrer"
+              className={cn(
+                "flex items-center gap-3 p-3 rounded-lg border transition",
+                prospect.website
+                  ? "hover:bg-accent/50 cursor-pointer"
+                  : "opacity-50 cursor-not-allowed",
+              )}
+            >
+              <div className="size-10 rounded-full bg-violet-100 dark:bg-violet-950/40 flex items-center justify-center flex-shrink-0">
+                <Globe className="h-5 w-5 text-violet-700 dark:text-violet-300" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Site web</p>
+                <p className="font-semibold truncate flex items-center gap-1">
+                  {prospect.website ? (
+                    <>
+                      {prospect.website.replace(/^https?:\/\/(www\.)?/, "")}
+                      <ExternalLink className="h-3 w-3 opacity-60" />
+                    </>
+                  ) : (
+                    "Aucun site"
+                  )}
+                </p>
+              </div>
+            </a>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Coordonnées</CardTitle>
@@ -383,9 +460,42 @@ function ProspectDetail() {
             </form>
           ) : (
             <dl className="grid grid-cols-2 gap-4 text-sm">
-              <div><dt className="text-muted-foreground">Email</dt><dd>{prospect.email || "—"}</dd></div>
-              <div><dt className="text-muted-foreground">Téléphone</dt><dd>{prospect.phone || "—"}</dd></div>
-              <div><dt className="text-muted-foreground">Site web</dt><dd>{prospect.website || "—"}</dd></div>
+              <div>
+                <dt className="text-muted-foreground">Email</dt>
+                <dd>
+                  {prospect.email ? (
+                    <a href={`mailto:${prospect.email}`} className="text-foreground hover:underline">
+                      {prospect.email}
+                    </a>
+                  ) : "—"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Téléphone</dt>
+                <dd>
+                  {prospect.phone ? (
+                    <a href={`tel:${prospect.phone}`} className="text-foreground hover:underline">
+                      {prospect.phone}
+                    </a>
+                  ) : "—"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Site web</dt>
+                <dd>
+                  {prospect.website ? (
+                    <a
+                      href={prospect.website}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-foreground hover:underline inline-flex items-center gap-1"
+                    >
+                      {prospect.website.replace(/^https?:\/\/(www\.)?/, "")}
+                      <ExternalLink className="h-3 w-3 opacity-60" />
+                    </a>
+                  ) : "—"}
+                </dd>
+              </div>
               <div><dt className="text-muted-foreground">Source</dt><dd>{prospect.source || "—"}</dd></div>
               <div className="col-span-2">
                 <dt className="text-muted-foreground">Étiquettes</dt>

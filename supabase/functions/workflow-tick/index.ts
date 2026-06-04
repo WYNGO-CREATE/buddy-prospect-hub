@@ -38,6 +38,7 @@ const CRON_SECRET = Deno.env.get("CRON_SECRET");
 const admin = createClient(SUPABASE_URL, SERVICE_KEY);
 
 // ─── Render variables {{prenom}} {{entreprise}} … ───
+// DOIT rester en sync avec src/lib/render-template.ts (côté front).
 function renderTemplate(
   tpl: string,
   ctx: {
@@ -45,23 +46,45 @@ function renderTemplate(
     last_name?: string | null;
     company?: string | null;
     email?: string | null;
+    phone?: string | null;
+    website?: string | null;
+    title?: string | null;
+    location?: string | null;
     sender_name?: string | null;
     sender_email?: string | null;
+    sender_phone?: string | null;
     agency_name?: string | null;
+    agency_website?: string | null;
   },
 ): string {
   const map: Record<string, string> = {
+    // FR — Prospect
     prenom: ctx.first_name || "",
     nom: ctx.last_name || "",
     entreprise: ctx.company || "",
     email: ctx.email || "",
+    telephone: ctx.phone || "",
+    tel: ctx.phone || "",
+    site: ctx.website || "",
+    site_web: ctx.website || "",
+    poste: ctx.title || "",
+    fonction: ctx.title || "",
+    ville: ctx.location || "",
+    localisation: ctx.location || "",
+    // FR — Expéditeur / agence
     expediteur: ctx.sender_name || "",
     email_expediteur: ctx.sender_email || "",
+    telephone_expediteur: ctx.sender_phone || "",
     agence: ctx.agency_name || "",
+    site_agence: ctx.agency_website || "",
     // Aliases anglais
     first_name: ctx.first_name || "",
     last_name: ctx.last_name || "",
     company: ctx.company || "",
+    phone: ctx.phone || "",
+    website: ctx.website || "",
+    title: ctx.title || "",
+    location: ctx.location || "",
     sender: ctx.sender_name || "",
   };
   return tpl.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => map[key] ?? `{{${key}}}`);
@@ -103,9 +126,15 @@ async function executeStep(run: any, step: any, prospect: any, ownerProfile: any
     last_name: prospect.last_name,
     company: prospect.company,
     email: prospect.email,
+    phone: prospect.phone,
+    website: prospect.website,
+    title: prospect.title,
+    location: prospect.location,
     sender_name: ownerProfile?.full_name,
     sender_email: ownerProfile?.email,
+    sender_phone: ownerProfile?.phone,
     agency_name: ownerProfile?.agency_name,
+    agency_website: ownerProfile?.agency_website,
   };
 
   // ─── EMAIL ───

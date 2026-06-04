@@ -28,6 +28,10 @@ type Prospect = {
   last_name: string | null;
   company: string | null;
   email: string | null;
+  phone?: string | null;
+  website?: string | null;
+  title?: string | null;
+  location?: string | null;
 };
 
 export function CallModeDrawer({
@@ -62,8 +66,21 @@ export function CallModeDrawer({
     queryFn: async () => {
       const { data } = await supabase
         .from("profiles")
-        .select("full_name, email")
+        .select("full_name, email, phone")
         .eq("id", user!.id)
+        .maybeSingle();
+      return data;
+    },
+  });
+
+  const { data: agency } = useQuery({
+    queryKey: ["agency-call"],
+    enabled: open,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("agency_settings")
+        .select("name, website_url")
+        .eq("id", true)
         .maybeSingle();
       return data;
     },
@@ -75,10 +92,17 @@ export function CallModeDrawer({
       last_name: prospect?.last_name,
       company: prospect?.company,
       email: prospect?.email,
+      phone: prospect?.phone,
+      website: prospect?.website,
+      title: (prospect as { title?: string | null })?.title ?? null,
+      location: (prospect as { location?: string | null })?.location ?? null,
       sender_name: profile?.full_name,
       sender_email: profile?.email,
+      sender_phone: (profile as { phone?: string | null })?.phone ?? null,
+      agency_name: agency?.name,
+      agency_website: agency?.website_url,
     }),
-    [prospect, profile],
+    [prospect, profile, agency],
   );
 
   const renderedScripts = useMemo(
