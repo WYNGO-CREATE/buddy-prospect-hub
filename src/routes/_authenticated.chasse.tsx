@@ -14,7 +14,7 @@
  */
 
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -154,8 +154,25 @@ function ChassePage() {
   const [codePostal, setCodePostal] = useState("");
   const [effectif, setEffectif] = useState("01");
 
-  // Results
-  const [results, setResults] = useState<EnrichedResult[]>([]);
+  // Results — persistés dans localStorage pour ne pas perdre l'historique
+  // entre les navigations. Les nouvelles recherches AJOUTENT (dédup par SIREN)
+  // au lieu d'écraser. Bouton "Effacer" disponible pour repartir à zéro.
+  const STORAGE_KEY = "wyngo.chasse.results.v1";
+  const [results, setResults] = useState<EnrichedResult[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const stored = window.localStorage.getItem(STORAGE_KEY);
+      if (stored) return JSON.parse(stored) as EnrichedResult[];
+    } catch { /* corrupted JSON → on ignore */ }
+    return [];
+  });
+  // Sauvegarde à chaque mise à jour (debounced via React's batching).
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(results));
+    } catch { /* quota dépassé → silencieux */ }
+  }, [results]);
+
   const [selectedSirens, setSelectedSirens] = useState<Set<string>>(new Set());
   const [checking, setChecking] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -217,21 +234,34 @@ function ChassePage() {
       const entreprises = (data as { entreprises?: PappersResult[] }).entreprises || [];
       const total = (data as { pagination?: { total?: number } }).pagination?.total;
 
-      // Marque toutes comme "checking" puis on lance les checks en parallèle
-      const enriched: EnrichedResult[] = entreprises.map((e) => ({
-        ...e,
-        website_status: "unknown" as WebsiteStatus,
-        website_score: 0,
-        website_url: e.site_web,
-        google_phone: null,
-        google_address: null,
-        google_rating: null,
-        scraped_email: null,
-        hunter_email: null,
-        checking: true,
-        enriching: true,
-      }));
-      setResults(enriched);
+      // Marque toutes comme "checking" puis on lance les checks en parallèle.
+      // On garde les SIREN déjà connus dans le state pour dédupliquer et
+      // PRÉSERVER l'historique (l'utilisateur veut naviguer entre prospects
+      // de plusieurs chasses sans tout perdre).
+      const existingSirens = new Set(results.map((r) => r.siren));
+      const newOnes: EnrichedResult[] = entreprises
+        .filter((e) => !existingSirens.has(e.siren))
+        .map((e) => ({
+          ...e,
+          website_status: "unknown" as WebsiteStatus,
+          website_score: 0,
+          website_url: e.site_web,
+          google_phone: null,
+          google_address: null,
+          google_rating: null,
+          scraped_email: null,
+          hunter_email: null,
+          checking: true,
+          enriching: true,
+        }));
+      const duplicates = entreprises.length - newOnes.length;
+      // Append: nouveaux d'abord, anciens à la suite pour visibilité
+      setResults((prev) => [...newOnes, ...prev]);
+      if (newOnes.length === 0) {
+        setChecking(false);
+        return { count: 0, total: total ?? 0, duplicates };
+      }
+      const enriched = newOnes;
 
       setChecking(true);
       setProgress(0);
@@ -332,12 +362,17 @@ function ChassePage() {
 
       await Promise.all(Array.from({ length: CONCURRENCY }, worker));
       setChecking(false);
-      return { count: enriched.length, total: total ?? enriched.length };
+      return {
+        count: enriched.length,
+        total: total ?? enriched.length,
+        duplicates,
+      };
     },
     onSuccess: (res) => {
-      toast.success(
-        `${res.count} entreprises analysées (sur ${res.total.toLocaleString("fr-FR")} disponibles)`,
-      );
+      const parts = [`${res.count} ajoutées`];
+      if (res.duplicates) parts.push(`${res.duplicates} déjà présentes`);
+      parts.push(`sur ${res.total.toLocaleString("fr-FR")} disponibles`);
+      toast.success(parts.join(" — "));
     },
     onError: (e: Error) => {
       setChecking(false);
@@ -665,6 +700,19 @@ function ChassePage() {
                 />
                 Seulement avec contact ({counts.with_contact}/{results.length})
               </label>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  if (confirm(`Effacer les ${results.length} résultat(s) actuels ? Les prospects déjà ajoutés au CRM restent.`)) {
+                    setResults([]);
+                    setSelectedSirens(new Set());
+                  }
+                }}
+                className="text-muted-foreground hover:text-rose-600"
+              >
+                Effacer les résultats
+              </Button>
             </div>
             {selectedSirens.size > 0 && (
               <Button
