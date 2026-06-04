@@ -84,6 +84,14 @@ const BLACKLIST_PATTERNS = [
   /@2x@/i, // matches like image-name@2x@something
   /@sha[1-9]/i, // commit hashes
   /\bu003c|\bu003e|\bu0040\b/i, // unicode escapes mal décodés
+  // Patterns JavaScript détectés à tort comme emails (faux positifs minified JS)
+  /^document\./i,        // document.location.origin, document.location.href, etc.
+  /^window\./i,          // window.location.origin
+  /^location\./i,
+  /\.origin$/i,
+  /\.href$/i,
+  /\.pathname$/i,
+  /\.protocol$/i,
 ];
 
 function isBlacklisted(email: string): boolean {
@@ -178,11 +186,21 @@ function decodeCloudflareEmails(html: string): string[] {
  *   "contact @ domain . fr"  (espaces)
  */
 function decodeTextObfuscations(html: string): string[] {
+  // ⚠️ IMPORTANT : on ne remplace JAMAIS le mot "at" ou "dot" nu sans
+  // délimiteurs explicites — sinon "loc[at]ion" devient "loc@ion" et on
+  // récupère des faux positifs depuis du JavaScript minifié comme
+  // "document.location.origin" → "document.loc@ion.origin".
+  // On exige donc : crochets/parens explicites OU "AT/DOT" en majuscules
+  // entourées d'espaces (convention humaine pour obfusquer un email).
   const text = html
-    // [at], (at), AT, " at "
-    .replace(/\s*[\[(]?\s*(?:at|@)\s*[\])]?\s*/gi, "@")
-    // [dot], (dot), DOT, " dot ", " . "
-    .replace(/\s*[\[(]?\s*(?:dot|point)\s*[\])]?\s*/gi, ".")
+    // [at], (at), {at}, <at>  (crochets / parens / accolades / chevrons OBLIGATOIRES)
+    .replace(/\s*[\[({<]\s*(?:at|@)\s*[\])}>]\s*/gi, "@")
+    // " AT " majuscules entourées d'espaces (jamais "at" minuscule sans délimiteurs)
+    .replace(/\s+AT\s+/g, "@")
+    // [dot], (dot), {dot}, <dot>
+    .replace(/\s*[\[({<]\s*(?:dot|point)\s*[\])}>]\s*/gi, ".")
+    // " DOT " majuscules entourées d'espaces
+    .replace(/\s+DOT\s+/g, ".")
     // Espaces autour du . dans les emails : "contact @ domain . fr"
     .replace(/(\w)\s+\.\s+(\w)/g, "$1.$2");
   const matches = text.match(EMAIL_REGEX) || [];

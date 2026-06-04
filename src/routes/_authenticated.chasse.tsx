@@ -402,7 +402,9 @@ function ChassePage() {
       const batchTag = `chasse_${today}`;
 
       const payloads = eligible.map((r) => {
-        const prenom = r.dirigeant_principal?.prenom?.trim() || "—";
+        // Si pas de dirigeant identifié, on met "Contact" en first_name et la
+        // société comme last_name (au lieu d'un "—" moche qui pollue le CRM).
+        const prenom = r.dirigeant_principal?.prenom?.trim() || "Contact";
         const nom = r.dirigeant_principal?.nom?.trim() || r.nom;
         const email = r.scraped_email || r.hunter_email || r.email || null;
         const phone = r.google_phone || r.telephone || null;
