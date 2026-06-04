@@ -498,14 +498,15 @@ function ProspectsPage() {
                   return (
                   <TableRow key={p.id}>
                     <TableCell>
-                      {/* Lien gros et clair vers la fiche, plus visible que l'ancien. */}
-                      <Link
-                        to="/prospects/$id"
-                        params={{ id: p.id }}
+                      {/* Lien NATIF <a href> (et non TanStack Link) en double sécurité :
+                          même si TanStack Router avait un souci, ce <a> garantit la
+                          navigation (avec un page reload). */}
+                      <a
+                        href={`/prospects/${p.id}`}
                         className="font-semibold text-foreground hover:text-primary hover:underline inline-flex items-center gap-1"
                       >
                         {p.first_name} {p.last_name}
-                      </Link>
+                      </a>
                       {(p.email || p.phone) && (
                         <div className="text-xs text-muted-foreground">{p.email || p.phone}</div>
                       )}
@@ -604,14 +605,13 @@ function ProspectsPage() {
                         {/* Bouton "Ouvrir la fiche" → chevron très visible, navigation
                             garantie via Link de TanStack Router (asChild pas dispo, on
                             wrappe directement le Link comme un bouton). */}
-                        <Link
-                          to="/prospects/$id"
-                          params={{ id: p.id }}
-                          className="p-1.5 rounded hover:bg-primary/10 text-muted-foreground hover:text-primary transition"
+                        <a
+                          href={`/prospects/${p.id}`}
+                          className="p-1.5 rounded hover:bg-primary/10 text-muted-foreground hover:text-primary transition inline-flex"
                           title="Ouvrir la fiche prospect"
                         >
                           <ChevronRight className="h-4 w-4" />
-                        </Link>
+                        </a>
                         {/* Suppression du prospect (avec confirmation). */}
                         <button
                           type="button"
