@@ -35,7 +35,7 @@ type DuplicateMatch = {
   match_website: boolean;
 };
 
-export const Route = createFileRoute("/_authenticated/prospects")({
+export const Route = createFileRoute("/_authenticated/prospects/")({
   component: ProspectsPage,
   head: () => ({ meta: [{ title: "Prospects — Wyngo Workspace" }] }),
 });

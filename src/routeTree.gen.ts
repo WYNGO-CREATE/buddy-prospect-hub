@@ -19,7 +19,6 @@ import { Route as AuthenticatedTemplatesRouteImport } from './routes/_authentica
 import { Route as AuthenticatedTableauRouteImport } from './routes/_authenticated.tableau'
 import { Route as AuthenticatedScriptsRouteImport } from './routes/_authenticated.scripts'
 import { Route as AuthenticatedRelancesRouteImport } from './routes/_authenticated.relances'
-import { Route as AuthenticatedProspectsRouteImport } from './routes/_authenticated.prospects'
 import { Route as AuthenticatedProfilRouteImport } from './routes/_authenticated.profil'
 import { Route as AuthenticatedPipelineRouteImport } from './routes/_authenticated.pipeline'
 import { Route as AuthenticatedLogsRouteImport } from './routes/_authenticated.logs'
@@ -28,6 +27,7 @@ import { Route as AuthenticatedFroidsRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedEquipeRouteImport } from './routes/_authenticated.equipe'
 import { Route as AuthenticatedChasseRouteImport } from './routes/_authenticated.chasse'
 import { Route as AuthenticatedApolloRouteImport } from './routes/_authenticated.apollo'
+import { Route as AuthenticatedProspectsIndexRouteImport } from './routes/_authenticated.prospects.index'
 import { Route as AuthenticatedProspectsIdRouteImport } from './routes/_authenticated.prospects.$id'
 
 const SignupRoute = SignupRouteImport.update({
@@ -79,11 +79,6 @@ const AuthenticatedRelancesRoute = AuthenticatedRelancesRouteImport.update({
   path: '/relances',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthenticatedProspectsRoute = AuthenticatedProspectsRouteImport.update({
-  id: '/prospects',
-  path: '/prospects',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
 const AuthenticatedProfilRoute = AuthenticatedProfilRouteImport.update({
   id: '/profil',
   path: '/profil',
@@ -124,11 +119,17 @@ const AuthenticatedApolloRoute = AuthenticatedApolloRouteImport.update({
   path: '/apollo',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedProspectsIndexRoute =
+  AuthenticatedProspectsIndexRouteImport.update({
+    id: '/prospects/',
+    path: '/prospects/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedProspectsIdRoute =
   AuthenticatedProspectsIdRouteImport.update({
-    id: '/$id',
-    path: '/$id',
-    getParentRoute: () => AuthenticatedProspectsRoute,
+    id: '/prospects/$id',
+    path: '/prospects/$id',
+    getParentRoute: () => AuthenticatedRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -143,7 +144,6 @@ export interface FileRoutesByFullPath {
   '/logs': typeof AuthenticatedLogsRoute
   '/pipeline': typeof AuthenticatedPipelineRoute
   '/profil': typeof AuthenticatedProfilRoute
-  '/prospects': typeof AuthenticatedProspectsRouteWithChildren
   '/relances': typeof AuthenticatedRelancesRoute
   '/scripts': typeof AuthenticatedScriptsRoute
   '/tableau': typeof AuthenticatedTableauRoute
@@ -151,6 +151,7 @@ export interface FileRoutesByFullPath {
   '/workflows': typeof AuthenticatedWorkflowsRoute
   '/auth/gmail-callback': typeof AuthGmailCallbackRoute
   '/prospects/$id': typeof AuthenticatedProspectsIdRoute
+  '/prospects/': typeof AuthenticatedProspectsIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -163,7 +164,6 @@ export interface FileRoutesByTo {
   '/logs': typeof AuthenticatedLogsRoute
   '/pipeline': typeof AuthenticatedPipelineRoute
   '/profil': typeof AuthenticatedProfilRoute
-  '/prospects': typeof AuthenticatedProspectsRouteWithChildren
   '/relances': typeof AuthenticatedRelancesRoute
   '/scripts': typeof AuthenticatedScriptsRoute
   '/tableau': typeof AuthenticatedTableauRoute
@@ -172,6 +172,7 @@ export interface FileRoutesByTo {
   '/auth/gmail-callback': typeof AuthGmailCallbackRoute
   '/': typeof AuthenticatedIndexRoute
   '/prospects/$id': typeof AuthenticatedProspectsIdRoute
+  '/prospects': typeof AuthenticatedProspectsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -186,7 +187,6 @@ export interface FileRoutesById {
   '/_authenticated/logs': typeof AuthenticatedLogsRoute
   '/_authenticated/pipeline': typeof AuthenticatedPipelineRoute
   '/_authenticated/profil': typeof AuthenticatedProfilRoute
-  '/_authenticated/prospects': typeof AuthenticatedProspectsRouteWithChildren
   '/_authenticated/relances': typeof AuthenticatedRelancesRoute
   '/_authenticated/scripts': typeof AuthenticatedScriptsRoute
   '/_authenticated/tableau': typeof AuthenticatedTableauRoute
@@ -195,6 +195,7 @@ export interface FileRoutesById {
   '/auth/gmail-callback': typeof AuthGmailCallbackRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/prospects/$id': typeof AuthenticatedProspectsIdRoute
+  '/_authenticated/prospects/': typeof AuthenticatedProspectsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -210,7 +211,6 @@ export interface FileRouteTypes {
     | '/logs'
     | '/pipeline'
     | '/profil'
-    | '/prospects'
     | '/relances'
     | '/scripts'
     | '/tableau'
@@ -218,6 +218,7 @@ export interface FileRouteTypes {
     | '/workflows'
     | '/auth/gmail-callback'
     | '/prospects/$id'
+    | '/prospects/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -230,7 +231,6 @@ export interface FileRouteTypes {
     | '/logs'
     | '/pipeline'
     | '/profil'
-    | '/prospects'
     | '/relances'
     | '/scripts'
     | '/tableau'
@@ -239,6 +239,7 @@ export interface FileRouteTypes {
     | '/auth/gmail-callback'
     | '/'
     | '/prospects/$id'
+    | '/prospects'
   id:
     | '__root__'
     | '/_authenticated'
@@ -252,7 +253,6 @@ export interface FileRouteTypes {
     | '/_authenticated/logs'
     | '/_authenticated/pipeline'
     | '/_authenticated/profil'
-    | '/_authenticated/prospects'
     | '/_authenticated/relances'
     | '/_authenticated/scripts'
     | '/_authenticated/tableau'
@@ -261,6 +261,7 @@ export interface FileRouteTypes {
     | '/auth/gmail-callback'
     | '/_authenticated/'
     | '/_authenticated/prospects/$id'
+    | '/_authenticated/prospects/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -342,13 +343,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRelancesRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/prospects': {
-      id: '/_authenticated/prospects'
-      path: '/prospects'
-      fullPath: '/prospects'
-      preLoaderRoute: typeof AuthenticatedProspectsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
     '/_authenticated/profil': {
       id: '/_authenticated/profil'
       path: '/profil'
@@ -405,29 +399,22 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedApolloRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/prospects/': {
+      id: '/_authenticated/prospects/'
+      path: '/prospects'
+      fullPath: '/prospects/'
+      preLoaderRoute: typeof AuthenticatedProspectsIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/prospects/$id': {
       id: '/_authenticated/prospects/$id'
-      path: '/$id'
+      path: '/prospects/$id'
       fullPath: '/prospects/$id'
       preLoaderRoute: typeof AuthenticatedProspectsIdRouteImport
-      parentRoute: typeof AuthenticatedProspectsRoute
+      parentRoute: typeof AuthenticatedRoute
     }
   }
 }
-
-interface AuthenticatedProspectsRouteChildren {
-  AuthenticatedProspectsIdRoute: typeof AuthenticatedProspectsIdRoute
-}
-
-const AuthenticatedProspectsRouteChildren: AuthenticatedProspectsRouteChildren =
-  {
-    AuthenticatedProspectsIdRoute: AuthenticatedProspectsIdRoute,
-  }
-
-const AuthenticatedProspectsRouteWithChildren =
-  AuthenticatedProspectsRoute._addFileChildren(
-    AuthenticatedProspectsRouteChildren,
-  )
 
 interface AuthenticatedRouteChildren {
   AuthenticatedApolloRoute: typeof AuthenticatedApolloRoute
@@ -438,13 +425,14 @@ interface AuthenticatedRouteChildren {
   AuthenticatedLogsRoute: typeof AuthenticatedLogsRoute
   AuthenticatedPipelineRoute: typeof AuthenticatedPipelineRoute
   AuthenticatedProfilRoute: typeof AuthenticatedProfilRoute
-  AuthenticatedProspectsRoute: typeof AuthenticatedProspectsRouteWithChildren
   AuthenticatedRelancesRoute: typeof AuthenticatedRelancesRoute
   AuthenticatedScriptsRoute: typeof AuthenticatedScriptsRoute
   AuthenticatedTableauRoute: typeof AuthenticatedTableauRoute
   AuthenticatedTemplatesRoute: typeof AuthenticatedTemplatesRoute
   AuthenticatedWorkflowsRoute: typeof AuthenticatedWorkflowsRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedProspectsIdRoute: typeof AuthenticatedProspectsIdRoute
+  AuthenticatedProspectsIndexRoute: typeof AuthenticatedProspectsIndexRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
@@ -456,13 +444,14 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedLogsRoute: AuthenticatedLogsRoute,
   AuthenticatedPipelineRoute: AuthenticatedPipelineRoute,
   AuthenticatedProfilRoute: AuthenticatedProfilRoute,
-  AuthenticatedProspectsRoute: AuthenticatedProspectsRouteWithChildren,
   AuthenticatedRelancesRoute: AuthenticatedRelancesRoute,
   AuthenticatedScriptsRoute: AuthenticatedScriptsRoute,
   AuthenticatedTableauRoute: AuthenticatedTableauRoute,
   AuthenticatedTemplatesRoute: AuthenticatedTemplatesRoute,
   AuthenticatedWorkflowsRoute: AuthenticatedWorkflowsRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedProspectsIdRoute: AuthenticatedProspectsIdRoute,
+  AuthenticatedProspectsIndexRoute: AuthenticatedProspectsIndexRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
