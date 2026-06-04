@@ -496,13 +496,21 @@ function ProspectsPage() {
                   const lastCallAt = lastCallMap.get(p.id);
                   const bucket = callBucket(p.id);
                   return (
-                  <TableRow key={p.id}>
+                  <TableRow
+                    key={p.id}
+                    className="cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={(e) => {
+                      // Si l'utilisateur clique sur un bouton / lien interne (toggle "appelé",
+                      // menu d'actions, etc.) on ne navigue pas — on laisse l'élément agir.
+                      const target = e.target as HTMLElement;
+                      if (target.closest("button, a, [role='menuitem'], [role='button']")) return;
+                      window.location.href = `/prospects/${p.id}`;
+                    }}
+                  >
                     <TableCell>
-                      {/* Lien NATIF <a href> (et non TanStack Link) en double sécurité :
-                          même si TanStack Router avait un souci, ce <a> garantit la
-                          navigation (avec un page reload). */}
                       <a
                         href={`/prospects/${p.id}`}
+                        onClick={(e) => e.stopPropagation()}
                         className="font-semibold text-foreground hover:text-primary hover:underline inline-flex items-center gap-1"
                       >
                         {p.first_name} {p.last_name}
