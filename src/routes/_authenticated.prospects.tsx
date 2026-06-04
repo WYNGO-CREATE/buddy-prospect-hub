@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
@@ -57,6 +57,7 @@ const prospectSchema = z.object({
 function ProspectsPage() {
   const { user, role } = useAuth();
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [callFilter, setCallFilter] = useState<"all" | "never" | "recent" | "stale">("all");
@@ -496,9 +497,22 @@ function ProspectsPage() {
                   const lastCallAt = lastCallMap.get(p.id);
                   const bucket = callBucket(p.id);
                   return (
-                  <TableRow key={p.id}>
+                  <TableRow
+                    key={p.id}
+                    onClick={() => navigate({ to: "/prospects/$id", params: { id: p.id } })}
+                    className="cursor-pointer hover:bg-accent/40 transition"
+                  >
                     <TableCell>
-                      <Link to="/prospects/$id" params={{ id: p.id }} className="font-medium hover:underline">
+                      {/* Le Link reste pour bénéficier de l'a11y + Cmd+clic pour ouvrir
+                          dans un nouvel onglet. Le onClick de la <TableRow> au-dessus rend
+                          la ligne entière cliquable pour les utilisateurs qui visent ailleurs
+                          que le nom (très petite zone quand le prénom est "—"). */}
+                      <Link
+                        to="/prospects/$id"
+                        params={{ id: p.id }}
+                        className="font-medium hover:underline"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         {p.first_name} {p.last_name}
                       </Link>
                       {(p.email || p.phone) && (
@@ -510,7 +524,7 @@ function ProspectsPage() {
                       {bucket === "never" ? (
                         <button
                           type="button"
-                          onClick={() => toggleCalled.mutate(p.id)}
+                          onClick={(e) => { e.stopPropagation(); toggleCalled.mutate(p.id); }}
                           disabled={toggleCalled.isPending}
                           title="Cliquer pour marquer comme appelé"
                           className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900 hover:bg-rose-100 dark:hover:bg-rose-950/60 transition cursor-pointer"
@@ -521,7 +535,8 @@ function ProspectsPage() {
                       ) : bucket === "recent" ? (
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             if (confirm("Annuler le marquage 'appelé' pour ce prospect ?")) toggleCalled.mutate(p.id);
                           }}
                           disabled={toggleCalled.isPending}
@@ -534,7 +549,8 @@ function ProspectsPage() {
                       ) : (
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             if (confirm("Annuler le marquage 'appelé' pour ce prospect ?")) toggleCalled.mutate(p.id);
                           }}
                           disabled={toggleCalled.isPending}
@@ -579,7 +595,7 @@ function ProspectsPage() {
                     {role === "admin" && scope === "team" && (
                       <TableCell className="text-xs text-muted-foreground">{profileMap.get(p.owner_id) || "—"}</TableCell>
                     )}
-                    <TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
                       <Select
                         value={p.status}
                         onValueChange={(v) => updateStatus.mutate({ id: p.id, status: v as ProspectStatus })}
