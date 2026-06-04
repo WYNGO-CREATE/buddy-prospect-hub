@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
@@ -57,6 +57,7 @@ const prospectSchema = z.object({
 function ProspectsPage() {
   const { user, role } = useAuth();
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [callFilter, setCallFilter] = useState<"all" | "never" | "recent" | "stale">("all");
@@ -500,21 +501,28 @@ function ProspectsPage() {
                     key={p.id}
                     className="cursor-pointer hover:bg-muted/50 transition-colors"
                     onClick={(e) => {
-                      // Si l'utilisateur clique sur un bouton / lien interne (toggle "appelé",
-                      // menu d'actions, etc.) on ne navigue pas — on laisse l'élément agir.
+                      // Si l'utilisateur clique sur un élément interactif interne
+                      // (bouton, lien, select, menu), on laisse l'élément agir
+                      // sans naviguer. Sinon → SPA navigation via TanStack Router.
                       const target = e.target as HTMLElement;
-                      if (target.closest("button, a, [role='menuitem'], [role='button']")) return;
-                      window.location.href = `/prospects/${p.id}`;
+                      if (
+                        target.closest(
+                          "button, a, input, select, [role='menuitem'], [role='button'], [role='combobox'], [data-state]"
+                        )
+                      )
+                        return;
+                      navigate({ to: "/prospects/$id", params: { id: p.id } });
                     }}
                   >
                     <TableCell>
-                      <a
-                        href={`/prospects/${p.id}`}
+                      <Link
+                        to="/prospects/$id"
+                        params={{ id: p.id }}
                         onClick={(e) => e.stopPropagation()}
                         className="font-semibold text-foreground hover:text-primary hover:underline inline-flex items-center gap-1"
                       >
                         {p.first_name} {p.last_name}
-                      </a>
+                      </Link>
                       {(p.email || p.phone) && (
                         <div className="text-xs text-muted-foreground">{p.email || p.phone}</div>
                       )}
@@ -613,13 +621,15 @@ function ProspectsPage() {
                         {/* Bouton "Ouvrir la fiche" → chevron très visible, navigation
                             garantie via Link de TanStack Router (asChild pas dispo, on
                             wrappe directement le Link comme un bouton). */}
-                        <a
-                          href={`/prospects/${p.id}`}
+                        <Link
+                          to="/prospects/$id"
+                          params={{ id: p.id }}
+                          onClick={(e) => e.stopPropagation()}
                           className="p-1.5 rounded hover:bg-primary/10 text-muted-foreground hover:text-primary transition inline-flex"
                           title="Ouvrir la fiche prospect"
                         >
                           <ChevronRight className="h-4 w-4" />
-                        </a>
+                        </Link>
                         {/* Suppression du prospect (avec confirmation). */}
                         <button
                           type="button"
