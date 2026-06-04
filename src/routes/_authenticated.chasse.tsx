@@ -77,7 +77,15 @@ type EnrichedResult = PappersResult & {
   website_status: WebsiteStatus;
   website_score: number;
   website_url: string | null;
+  // Enrichissements
+  google_phone: string | null;
+  google_address: string | null;
+  google_rating: number | null;
+  scraped_email: string | null;
+  hunter_email: string | null;
+  // États
   checking: boolean;
+  enriching: boolean;
 };
 
 // Codes NAF de TPE typiques pour Wyngo
@@ -212,43 +220,106 @@ function ChassePage() {
         website_status: "unknown" as WebsiteStatus,
         website_score: 0,
         website_url: e.site_web,
+        google_phone: null,
+        google_address: null,
+        google_rating: null,
+        scraped_email: null,
+        hunter_email: null,
         checking: true,
+        enriching: true,
       }));
       setResults(enriched);
 
-      // Check des sites en parallèle limité à 5 simultanés (pour pas DDoS le bot)
       setChecking(true);
       setProgress(0);
-      const CONCURRENCY = 5;
+      const CONCURRENCY = 4;
       let done = 0;
       const queue = [...enriched];
+
+      // Pour chaque entreprise, on lance EN PARALLÈLE :
+      //   1. website-checker  → classifie le statut du site
+      //   2. places-enrich    → téléphone + site officiel via Google Maps
+      //   3. scrape-email     → extrait l'email depuis le site (si on en a un)
+      //   4. hunter-find      → fallback si scraping a rien donné
+      async function enrichOne(item: EnrichedResult) {
+        // Étape 1+2 en parallèle (indépendants)
+        const [checkRes, placesRes] = await Promise.allSettled([
+          supabase.functions.invoke("website-checker", {
+            body: { company_name: item.nom, hint_url: item.site_web || undefined },
+          }),
+          supabase.functions.invoke("places-enrich", {
+            body: { name: item.nom, city: item.ville, code_postal: item.code_postal },
+          }),
+        ]);
+
+        const checkData = checkRes.status === "fulfilled" ? (checkRes.value.data as any) : null;
+        const placesData = placesRes.status === "fulfilled" ? (placesRes.value.data as any) : null;
+        const place = placesData?.place;
+
+        const status: WebsiteStatus = checkData?.status || "unknown";
+        const score: number = checkData?.score ?? 0;
+        // Le site officiel Google Maps est souvent plus fiable que celui devinéb
+        const url: string | null = checkData?.url || place?.website || item.site_web || null;
+
+        // Étape 3 : scraping email si on a un site
+        let scrapedEmail: string | null = null;
+        if (url) {
+          try {
+            const { data: scrapeData } = await supabase.functions.invoke("email-scraper", {
+              body: { url },
+            });
+            scrapedEmail = (scrapeData as any)?.email || null;
+          } catch {
+            // silencieux
+          }
+        }
+
+        // Étape 4 : Hunter fallback si scraping vide ET on a un domaine
+        let hunterEmail: string | null = null;
+        if (!scrapedEmail && url) {
+          try {
+            const domain = new URL(url).hostname.replace(/^www\./, "");
+            const { data: hunterData } = await supabase.functions.invoke("hunter-find", {
+              body: { action: "domain-search", params: { domain } },
+            });
+            hunterEmail = (hunterData as any)?.email || null;
+          } catch {
+            // silencieux (Hunter pas configuré OU quota dépassé)
+          }
+        }
+
+        setResults((prev) =>
+          prev.map((p) =>
+            p.siren === item.siren
+              ? {
+                  ...p,
+                  website_status: status,
+                  website_score: score,
+                  website_url: url,
+                  google_phone: place?.phone || null,
+                  google_address: place?.address || null,
+                  google_rating: place?.rating || null,
+                  scraped_email: scrapedEmail,
+                  hunter_email: hunterEmail,
+                  checking: false,
+                  enriching: false,
+                }
+              : p,
+          ),
+        );
+      }
 
       async function worker() {
         while (queue.length > 0) {
           const item = queue.shift();
           if (!item) break;
           try {
-            const { data: checkData } = await supabase.functions.invoke("website-checker", {
-              body: { company_name: item.nom, hint_url: item.site_web || undefined },
-            });
-            const r = checkData as {
-              status?: WebsiteStatus;
-              score?: number;
-              url?: string | null;
-            } | null;
-            const status = r?.status || "unknown";
-            const score = r?.score ?? 0;
-            const url = r?.url ?? null;
-            setResults((prev) =>
-              prev.map((p) =>
-                p.siren === item.siren
-                  ? { ...p, website_status: status, website_score: score, website_url: url, checking: false }
-                  : p,
-              ),
-            );
+            await enrichOne(item);
           } catch {
             setResults((prev) =>
-              prev.map((p) => (p.siren === item.siren ? { ...p, checking: false } : p)),
+              prev.map((p) =>
+                p.siren === item.siren ? { ...p, checking: false, enriching: false } : p,
+              ),
             );
           }
           done++;
@@ -282,16 +353,23 @@ function ChassePage() {
         // Le dirigeant principal devient le contact ; à défaut, on fallback sur le nom de l'entreprise
         const prenom = r.dirigeant_principal?.prenom?.trim() || "—";
         const nom = r.dirigeant_principal?.nom?.trim() || r.nom;
+        // Priorité : email scrapé > Hunter > email Pappers
+        const bestEmail = r.scraped_email || r.hunter_email || r.email || null;
+        // Priorité téléphone : Google Maps > Pappers (Google a souvent les numéros à jour)
+        const bestPhone = r.google_phone || r.telephone || null;
+        // Adresse Google Maps si dispo, sinon Pappers
+        const bestLocation =
+          r.google_address || [r.adresse, r.code_postal, r.ville].filter(Boolean).join(" ");
         return {
           owner_id: user.id,
           first_name: prenom,
           last_name: nom,
           company: r.nom,
           title: r.dirigeant_principal?.qualite || null,
-          email: r.email || null,
-          phone: r.telephone || null,
+          email: bestEmail,
+          phone: bestPhone,
           website: r.website_url || null,
-          location: [r.ville, r.code_postal].filter(Boolean).join(" "),
+          location: bestLocation,
           siret: r.siret,
           industry: r.libelle_naf,
           source: "pappers",
@@ -625,15 +703,32 @@ function ChassePage() {
                               )}
                             </span>
                           )}
-                          {r.telephone && (
-                            <span className="inline-flex items-center gap-1">
-                              <Phone className="h-3 w-3" /> {r.telephone}
-                            </span>
+                          {(r.google_phone || r.telephone) && (
+                            <a
+                              href={`tel:${r.google_phone || r.telephone}`}
+                              className="inline-flex items-center gap-1 text-foreground hover:underline"
+                            >
+                              <Phone className="h-3 w-3" />
+                              {r.google_phone || r.telephone}
+                              {r.google_phone && (
+                                <span className="text-[10px] text-emerald-600 ml-1">G</span>
+                              )}
+                            </a>
                           )}
-                          {r.email && (
-                            <span className="inline-flex items-center gap-1">
-                              <Mail className="h-3 w-3" /> {r.email}
-                            </span>
+                          {(r.scraped_email || r.hunter_email || r.email) && (
+                            <a
+                              href={`mailto:${r.scraped_email || r.hunter_email || r.email}`}
+                              className="inline-flex items-center gap-1 text-foreground hover:underline"
+                            >
+                              <Mail className="h-3 w-3" />
+                              {r.scraped_email || r.hunter_email || r.email}
+                              {r.scraped_email && (
+                                <span className="text-[10px] text-blue-600 ml-1">site</span>
+                              )}
+                              {!r.scraped_email && r.hunter_email && (
+                                <span className="text-[10px] text-amber-600 ml-1">H</span>
+                              )}
+                            </a>
                           )}
                           {r.website_url && (
                             <a
@@ -645,6 +740,16 @@ function ChassePage() {
                               <Globe className="h-3 w-3" /> {r.website_url.replace(/^https?:\/\//, "")}
                               <ExternalLink className="h-2.5 w-2.5" />
                             </a>
+                          )}
+                          {r.google_rating != null && (
+                            <span className="text-amber-600">
+                              ★ {r.google_rating.toFixed(1)}
+                            </span>
+                          )}
+                          {r.enriching && (
+                            <span className="inline-flex items-center gap-1 text-muted-foreground">
+                              <Loader2 className="h-3 w-3 animate-spin" /> Enrichissement…
+                            </span>
                           )}
                         </div>
                       </div>
