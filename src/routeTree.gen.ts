@@ -26,6 +26,7 @@ import { Route as AuthenticatedLogsRouteImport } from './routes/_authenticated.l
 import { Route as AuthenticatedInboxRouteImport } from './routes/_authenticated.inbox'
 import { Route as AuthenticatedFroidsRouteImport } from './routes/_authenticated.froids'
 import { Route as AuthenticatedEquipeRouteImport } from './routes/_authenticated.equipe'
+import { Route as AuthenticatedChasseRouteImport } from './routes/_authenticated.chasse'
 import { Route as AuthenticatedApolloRouteImport } from './routes/_authenticated.apollo'
 import { Route as AuthenticatedProspectsIdRouteImport } from './routes/_authenticated.prospects.$id'
 
@@ -113,6 +114,11 @@ const AuthenticatedEquipeRoute = AuthenticatedEquipeRouteImport.update({
   path: '/equipe',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedChasseRoute = AuthenticatedChasseRouteImport.update({
+  id: '/chasse',
+  path: '/chasse',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedApolloRoute = AuthenticatedApolloRouteImport.update({
   id: '/apollo',
   path: '/apollo',
@@ -130,6 +136,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/apollo': typeof AuthenticatedApolloRoute
+  '/chasse': typeof AuthenticatedChasseRoute
   '/equipe': typeof AuthenticatedEquipeRoute
   '/froids': typeof AuthenticatedFroidsRoute
   '/inbox': typeof AuthenticatedInboxRoute
@@ -149,6 +156,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/apollo': typeof AuthenticatedApolloRoute
+  '/chasse': typeof AuthenticatedChasseRoute
   '/equipe': typeof AuthenticatedEquipeRoute
   '/froids': typeof AuthenticatedFroidsRoute
   '/inbox': typeof AuthenticatedInboxRoute
@@ -171,6 +179,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/_authenticated/apollo': typeof AuthenticatedApolloRoute
+  '/_authenticated/chasse': typeof AuthenticatedChasseRoute
   '/_authenticated/equipe': typeof AuthenticatedEquipeRoute
   '/_authenticated/froids': typeof AuthenticatedFroidsRoute
   '/_authenticated/inbox': typeof AuthenticatedInboxRoute
@@ -194,6 +203,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/apollo'
+    | '/chasse'
     | '/equipe'
     | '/froids'
     | '/inbox'
@@ -213,6 +223,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/apollo'
+    | '/chasse'
     | '/equipe'
     | '/froids'
     | '/inbox'
@@ -234,6 +245,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/_authenticated/apollo'
+    | '/_authenticated/chasse'
     | '/_authenticated/equipe'
     | '/_authenticated/froids'
     | '/_authenticated/inbox'
@@ -379,6 +391,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedEquipeRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/chasse': {
+      id: '/_authenticated/chasse'
+      path: '/chasse'
+      fullPath: '/chasse'
+      preLoaderRoute: typeof AuthenticatedChasseRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/apollo': {
       id: '/_authenticated/apollo'
       path: '/apollo'
@@ -412,6 +431,7 @@ const AuthenticatedProspectsRouteWithChildren =
 
 interface AuthenticatedRouteChildren {
   AuthenticatedApolloRoute: typeof AuthenticatedApolloRoute
+  AuthenticatedChasseRoute: typeof AuthenticatedChasseRoute
   AuthenticatedEquipeRoute: typeof AuthenticatedEquipeRoute
   AuthenticatedFroidsRoute: typeof AuthenticatedFroidsRoute
   AuthenticatedInboxRoute: typeof AuthenticatedInboxRoute
@@ -429,6 +449,7 @@ interface AuthenticatedRouteChildren {
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedApolloRoute: AuthenticatedApolloRoute,
+  AuthenticatedChasseRoute: AuthenticatedChasseRoute,
   AuthenticatedEquipeRoute: AuthenticatedEquipeRoute,
   AuthenticatedFroidsRoute: AuthenticatedFroidsRoute,
   AuthenticatedInboxRoute: AuthenticatedInboxRoute,
