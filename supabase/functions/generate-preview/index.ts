@@ -144,9 +144,6 @@ async function generateCopy(input: {
   hours?: string[];
   reviews_excerpt?: string;
 }): Promise<{ copy: CopyOutput; model: string }> {
-  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY manquant");
-
   const reviewsBlock = input.reviews_excerpt
     ? `\n\nExtrait d'avis clients réels :\n${input.reviews_excerpt}`
     : "";
@@ -175,32 +172,82 @@ Réponds UNIQUEMENT en JSON valide avec cette structure exacte :
   "cta_text": "Texte du bouton principal (1-3 mots, ex: 'Réserver une table')"
 }`;
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-5",
-      max_tokens: 1024,
-      messages: [{ role: "user", content: prompt }],
-    }),
-  });
-
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`Claude API ${res.status}: ${t}`);
+  // ── Provider 1 : Gemini 2.5 Flash (par défaut, déjà configuré, rapide & cheap)
+  const geminiKey = Deno.env.get("GEMINI_API_KEY");
+  if (geminiKey) {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.9,
+            response_mime_type: "application/json",
+            response_schema: {
+              type: "object",
+              properties: {
+                hero_title: { type: "string" },
+                hero_tagline: { type: "string" },
+                about_title: { type: "string" },
+                about_text: { type: "string" },
+                services: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      title: { type: "string" },
+                      description: { type: "string" },
+                    },
+                    required: ["title", "description"],
+                  },
+                },
+                cta_text: { type: "string" },
+              },
+              required: ["hero_title", "hero_tagline", "about_title", "about_text", "services", "cta_text"],
+            },
+          },
+        }),
+      }
+    );
+    if (!res.ok) {
+      const t = await res.text();
+      throw new Error(`Gemini API ${res.status}: ${t}`);
+    }
+    const data = await res.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("Pas de JSON dans la réponse Gemini");
+    const copy = JSON.parse(jsonMatch[0]) as CopyOutput;
+    return { copy, model: "gemini-2.5-flash" };
   }
-  const data = await res.json();
-  const text = data.content?.[0]?.text || "";
-  // Extraire le JSON (parfois entouré de markdown ```json...```)
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error("Pas de JSON dans la réponse Claude");
-  const copy = JSON.parse(jsonMatch[0]) as CopyOutput;
 
-  return { copy, model: "claude-sonnet-4-5" };
+  // ── Provider 2 : Anthropic (fallback si Gemini absent)
+  const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
+  if (anthropicKey) {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": anthropicKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-5",
+        max_tokens: 1024,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+    if (!res.ok) throw new Error(`Claude API ${res.status}: ${await res.text()}`);
+    const data = await res.json();
+    const text = data.content?.[0]?.text || "";
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("Pas de JSON dans la réponse Claude");
+    return { copy: JSON.parse(jsonMatch[0]) as CopyOutput, model: "claude-sonnet-4-5" };
+  }
+
+  throw new Error("Aucune clé IA configurée (GEMINI_API_KEY ou ANTHROPIC_API_KEY)");
 }
 
 // ════════════════════════════════════════════════════════════════════
