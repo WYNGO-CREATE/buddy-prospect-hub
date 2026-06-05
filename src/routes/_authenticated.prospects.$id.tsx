@@ -12,9 +12,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { ArrowLeft, PhoneCall, CalendarClock, History, Check, MessageSquare, Trash2, UserCog, Headphones, Mail, Globe, ExternalLink, Phone, Sparkles } from "lucide-react";
+import { ArrowLeft, PhoneCall, CalendarClock, History, Check, MessageSquare, Trash2, UserCog, Headphones, Mail, Globe, ExternalLink, Phone, Sparkles, Wand2 } from "lucide-react";
 import { CallModeDrawer } from "@/components/call-mode-drawer";
 import { PitchGeneratorDialog } from "@/components/pitch-generator-dialog";
+import { InstantPreviewDialog } from "@/components/instant-preview-dialog";
 import { PROSPECT_STATUSES, STATUS_LABELS, STATUS_VARIANTS, EVENT_LABELS, type ProspectStatus } from "@/lib/crm";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -314,6 +315,19 @@ function ProspectDetail() {
             <Headphones className="h-4 w-4 mr-1.5" />
             Mode appel
           </Button>
+          {/* ⚡ APERÇU INSTANTANÉ : génère un vrai site web preview pour le prospect en 15s.
+              Le commercial copie le lien et l'envoie par SMS pendant l'appel : effet wahou
+              garanti, plus aucune objection "je vois pas ce que ça donnerait". */}
+          <InstantPreviewDialog prospectId={prospect.id}>
+            <Button
+              variant="default"
+              size="sm"
+              className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-lg shadow-amber-500/30"
+            >
+              <Wand2 className="h-4 w-4 mr-1.5" />
+              Aperçu Instantané
+            </Button>
+          </InstantPreviewDialog>
           {/* Génération de pitch cold ULTRA-personnalisé par IA */}
           <PitchGeneratorDialog
             prospectId={prospect.id}
