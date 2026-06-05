@@ -78,11 +78,11 @@ function LoginPage() {
             <Button type="submit" className="w-full" disabled={submitting}>
               {submitting ? "Connexion…" : "Se connecter"}
             </Button>
-            <p className="text-sm text-center text-muted-foreground">
-              Pas encore de compte ?{" "}
-              <Link to="/signup" className="text-primary font-medium hover:underline">
-                Inscrivez-vous
-              </Link>
+            {/* Pas de lien d'inscription publique : les comptes sont créés
+                par l'admin (Hugo) qui invite les collaborateurs depuis
+                /admin → "Inviter un collaborateur". */}
+            <p className="text-xs text-center text-muted-foreground">
+              Accès réservé aux collaborateurs invités · contact@wyngo.fr
             </p>
           </form>
         </CardContent>
