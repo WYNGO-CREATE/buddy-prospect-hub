@@ -299,13 +299,40 @@ function buildHtml(input: {
       } catch(e){}
     </script>`;
 
+  // URL canonique pour les liens partagés (iMessage / Mail / WhatsApp / LinkedIn)
+  const canonicalUrl = `${input.supabase_url}/storage/v1/object/public/previews/${input.slug}.html`;
+  const ogImage = heroPhoto; // la photo hero sera la carte preview dans les messageries
+  const ogTitle = `${input.company} — ${escapeHtml(input.copy.hero_title)}`;
+  const ogDescription = escapeHtml(input.copy.hero_tagline);
+
   return `<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${company}</title>
-  <meta name="description" content="${escapeHtml(input.copy.hero_tagline)}">
+  <meta name="description" content="${ogDescription}">
+
+  <!-- Open Graph (Facebook / iMessage / LinkedIn / WhatsApp) -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="${canonicalUrl}">
+  <meta property="og:title" content="${ogTitle}">
+  <meta property="og:description" content="${ogDescription}">
+  <meta property="og:image" content="${ogImage}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:locale" content="fr_FR">
+  <meta property="og:site_name" content="${company}">
+
+  <!-- Twitter Card (Twitter / iMessage iOS récents) -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${ogTitle}">
+  <meta name="twitter:description" content="${ogDescription}">
+  <meta name="twitter:image" content="${ogImage}">
+
+  <!-- Favicon emoji (apparait dans l'onglet et dans certains link previews) -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>${theme.emoji}</text></svg>">
+
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -523,13 +550,15 @@ serve(async (req) => {
     // 7. Upload sur Storage avec service role (bypass RLS pour l'écriture)
     const serviceClient = createClient(supabaseUrl, serviceKey);
     const storagePath = `${slug}.html`;
-    // ⚠️ Pas de "; charset=utf-8" → certains buckets Storage rejettent ce mime
-    // (validation stricte sur allowed_mime_types). Le HTML déclare déjà
-    // <meta charset="UTF-8"> donc tout marche pareil côté browser.
-    const htmlBytes = new TextEncoder().encode(html);
-    const { error: upErr } = await serviceClient.storage.from("previews").upload(storagePath, htmlBytes, {
+    // ⚠️ Bug fix : avec un Uint8Array, le SDK Supabase IGNORE l'option
+    // contentType et tombe sur "application/octet-stream" ou "text/plain",
+    // ce qui fait que Safari affiche le code source au lieu de rendre le HTML.
+    // Solution : on passe un Blob avec le type explicite — là c'est respecté.
+    const blob = new Blob([html], { type: "text/html" });
+    const { error: upErr } = await serviceClient.storage.from("previews").upload(storagePath, blob, {
       contentType: "text/html",
       upsert: true,
+      cacheControl: "300", // 5 min de cache CDN (suffisant pour les ouvertures live)
     });
     if (upErr) throw new Error(`Storage upload : ${upErr.message}`);
 
