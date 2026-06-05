@@ -172,7 +172,36 @@ Réponds UNIQUEMENT en JSON valide avec cette structure exacte :
   "cta_text": "Texte du bouton principal (1-3 mots, ex: 'Réserver une table')"
 }`;
 
-  // ── Provider 1 : Gemini 2.5 Flash (par défaut, déjà configuré, rapide & cheap)
+  // ── Provider 1 : Claude Sonnet 4.6 (qualité MAX, ton FR naturel et chaleureux)
+  //    Coût ~0,003€ par génération → négligeable vs la valeur de la conversion.
+  const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
+  if (anthropicKey) {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": anthropicKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1024,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      throw new Error(`Claude API ${res.status}: ${t}`);
+    }
+    const data = await res.json();
+    const text = data.content?.[0]?.text || "";
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("Pas de JSON dans la réponse Claude");
+    const copy = JSON.parse(jsonMatch[0]) as CopyOutput;
+    return { copy, model: "claude-sonnet-4-6" };
+  }
+
+  // ── Provider 2 : Gemini 2.5 Flash (fallback rapide & cheap si Claude absent)
   const geminiKey = Deno.env.get("GEMINI_API_KEY");
   if (geminiKey) {
     const res = await fetch(
@@ -223,31 +252,7 @@ Réponds UNIQUEMENT en JSON valide avec cette structure exacte :
     return { copy, model: "gemini-2.5-flash" };
   }
 
-  // ── Provider 2 : Anthropic (fallback si Gemini absent)
-  const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
-  if (anthropicKey) {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": anthropicKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-5",
-        max_tokens: 1024,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-    if (!res.ok) throw new Error(`Claude API ${res.status}: ${await res.text()}`);
-    const data = await res.json();
-    const text = data.content?.[0]?.text || "";
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error("Pas de JSON dans la réponse Claude");
-    return { copy: JSON.parse(jsonMatch[0]) as CopyOutput, model: "claude-sonnet-4-5" };
-  }
-
-  throw new Error("Aucune clé IA configurée (GEMINI_API_KEY ou ANTHROPIC_API_KEY)");
+  throw new Error("Aucune clé IA configurée (ANTHROPIC_API_KEY ou GEMINI_API_KEY)");
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -518,8 +523,12 @@ serve(async (req) => {
     // 7. Upload sur Storage avec service role (bypass RLS pour l'écriture)
     const serviceClient = createClient(supabaseUrl, serviceKey);
     const storagePath = `${slug}.html`;
-    const { error: upErr } = await serviceClient.storage.from("previews").upload(storagePath, html, {
-      contentType: "text/html; charset=utf-8",
+    // ⚠️ Pas de "; charset=utf-8" → certains buckets Storage rejettent ce mime
+    // (validation stricte sur allowed_mime_types). Le HTML déclare déjà
+    // <meta charset="UTF-8"> donc tout marche pareil côté browser.
+    const htmlBytes = new TextEncoder().encode(html);
+    const { error: upErr } = await serviceClient.storage.from("previews").upload(storagePath, htmlBytes, {
+      contentType: "text/html",
       upsert: true,
     });
     if (upErr) throw new Error(`Storage upload : ${upErr.message}`);

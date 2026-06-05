@@ -419,12 +419,17 @@ Deno.serve(async (req) => {
       website_excerpt: websiteSnapshot.excerpt,
     });
 
-    // Anthropic en priorité s'il est configuré, sinon Gemini
+    // ⚠️ Pitch / cold emails : on FORCE Gemini (cheap & largement suffisant
+    //    pour les emails), on garde les crédits Anthropic pour l'Aperçu
+    //    Instantané où la qualité du copy fait toute la différence.
+    //    Anthropic n'est utilisé qu'en dernier recours si Gemini est down.
     let generated;
-    if (ANTHROPIC_API_KEY) {
+    if (GEMINI_API_KEY) {
+      generated = await generateWithGemini(systemPrompt, userPrompt);
+    } else if (ANTHROPIC_API_KEY) {
       generated = await generateWithAnthropic(systemPrompt, userPrompt);
     } else {
-      generated = await generateWithGemini(systemPrompt, userPrompt);
+      throw new Error("Aucune clé IA configurée");
     }
 
     // Log léger (non-bloquant)
