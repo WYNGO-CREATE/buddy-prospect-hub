@@ -48,6 +48,7 @@ import {
   Send,
   RefreshCw,
   Unplug,
+  Trash2,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -235,6 +236,22 @@ function InboxPage() {
       toast.success("Message archivé");
       setSelectedId(null);
     },
+  });
+
+  // Suppression DÉFINITIVE d'un message (irréversible)
+  const deleteMessage = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("messages").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["inbox-messages"] });
+      qc.invalidateQueries({ queryKey: ["inbox-unread"] });
+      qc.invalidateQueries({ queryKey: ["inbox-counts"] });
+      toast.success("Message supprimé");
+      setSelectedId(null);
+    },
+    onError: (e: Error) => toast.error("Suppression échouée", { description: e.message }),
   });
 
   const stats = useMemo(() => {
@@ -505,6 +522,15 @@ function InboxPage() {
               onArchive={() =>
                 toggleArchive.mutate({ id: selected.id, is_archived: !selected.is_archived })
               }
+              onDelete={() => {
+                if (confirm(
+                  `Supprimer définitivement ce message ?\n\n` +
+                    `${selected.subject || "(sans objet)"}\n\n` +
+                    `Cette action est irréversible. Pour conserver l'historique, utilise plutôt "Archiver".`,
+                )) {
+                  deleteMessage.mutate(selected.id);
+                }
+              }}
             />
           ) : (
             <div className="h-full min-h-[60vh] flex flex-col items-center justify-center text-center px-8 py-16">
@@ -608,10 +634,12 @@ function MessageDetail({
   message,
   onToggleRead,
   onArchive,
+  onDelete,
 }: {
   message: EnrichedMessage;
   onToggleRead: () => void;
   onArchive: () => void;
+  onDelete: () => void;
 }) {
   const meta = CHANNEL_META[message.channel];
   const Icon = meta.icon;
@@ -650,6 +678,15 @@ function MessageDetail({
           </Button>
           <Button variant="ghost" size="sm" onClick={onArchive} title={message.is_archived ? "Désarchiver" : "Archiver"}>
             {message.is_archived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onDelete}
+            title="Supprimer définitivement"
+            className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+          >
+            <Trash2 className="h-4 w-4" />
           </Button>
           {message.prospect && (
             <Link
