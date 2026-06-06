@@ -152,21 +152,18 @@ function DeleteCollaboratorDialog({
         throw new Error(detail);
       }
       if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error);
-      return data as { stats: Record<string, number> };
+      return data as { stats: Record<string, number>; message?: string };
     },
     onSuccess: (data) => {
-      const reassigned = data.stats?.prospects_reassigned ?? 0;
-      const calls = data.stats?.call_logs_reassigned ?? 0;
-      toast.success("Collaborateur supprimé", {
-        description: reassigned > 0 || calls > 0
-          ? `${reassigned} prospects et ${calls} appels réassignés vers toi.`
-          : "Aucune donnée à réassigner.",
+      const kept = data.stats?.prospects_kept ?? 0;
+      toast.success("Collaborateur archivé", {
+        description: data.message || `Retiré de l'équipe. ${kept} prospect(s) conservés avec son nom comme propriétaire historique.`,
       });
       setOpen(false);
       setConfirmText("");
       onDeleted();
     },
-    onError: (e: Error) => toast.error("Suppression échouée", { description: e.message }),
+    onError: (e: Error) => toast.error("Archivage échoué", { description: e.message }),
   });
 
   return (
@@ -176,7 +173,7 @@ function DeleteCollaboratorDialog({
           variant="ghost"
           size="icon"
           className="h-8 w-8 text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40"
-          title="Supprimer définitivement"
+          title="Retirer de l'équipe (archive)"
         >
           <Trash2 className="h-4 w-4" />
         </Button>
@@ -185,10 +182,12 @@ function DeleteCollaboratorDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-rose-700 dark:text-rose-400">
             <AlertTriangle className="h-5 w-5" />
-            Supprimer ce collaborateur ?
+            Retirer ce collaborateur de l'équipe ?
           </DialogTitle>
           <DialogDescription>
-            Cette action est <strong>irréversible</strong>. Le compte sera supprimé définitivement.
+            Le compte sera <strong>archivé</strong> : la personne ne pourra plus se connecter,
+            mais <strong>tout son travail reste dans le CRM</strong> (avec son nom comme propriétaire,
+            pour garder l'historique et éviter les doublons de prospection).
           </DialogDescription>
         </DialogHeader>
 
@@ -199,17 +198,17 @@ function DeleteCollaboratorDialog({
           </div>
 
           {(collaborator.total > 0 || collaborator.calls > 0) && (
-            <div className="rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50/60 dark:bg-amber-950/30 p-3 text-sm">
-              <p className="font-medium text-amber-900 dark:text-amber-200 mb-1">
-                Réassignation automatique vers toi :
+            <div className="rounded-lg border border-emerald-200 dark:border-emerald-900 bg-emerald-50/60 dark:bg-emerald-950/30 p-3 text-sm">
+              <p className="font-medium text-emerald-900 dark:text-emerald-200 mb-1">
+                Conservé dans le CRM (avec son nom) :
               </p>
-              <ul className="text-xs text-amber-800 dark:text-amber-300 space-y-0.5 pl-4 list-disc">
-                {collaborator.total > 0 && <li>{collaborator.total} prospect(s)</li>}
-                {collaborator.calls > 0 && <li>{collaborator.calls} appel(s) loggé(s)</li>}
-                <li>Follow-ups et commentaires</li>
+              <ul className="text-xs text-emerald-800 dark:text-emerald-300 space-y-0.5 pl-4 list-disc">
+                {collaborator.total > 0 && <li>{collaborator.total} prospect(s) — visibles dans la base</li>}
+                {collaborator.calls > 0 && <li>{collaborator.calls} appel(s) loggé(s) — historique intact</li>}
+                <li>Follow-ups, commentaires, notes</li>
               </ul>
-              <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-2 italic">
-                Aucune donnée perdue — tout est récupéré sous ton ownership.
+              <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-2 italic">
+                Tu vois "déjà contacté par {collaborator.full_name || "lui"}" sur ses anciens prospects pour éviter les doublons.
               </p>
             </div>
           )}
@@ -239,7 +238,7 @@ function DeleteCollaboratorDialog({
             className="gap-2"
           >
             {del.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-            Supprimer définitivement
+            Retirer de l'équipe
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -250,26 +249,34 @@ function DeleteCollaboratorDialog({
 function EquipePage() {
   const qc = useQueryClient();
   const { user: currentUser } = useAuth();
+  const [showArchived, setShowArchived] = useState(false);
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["team-stats"],
     queryFn: async () => {
       const [{ data: profiles }, { data: prospects }, { data: calls }] = await Promise.all([
-        supabase.from("profiles").select("id, full_name, email, created_at, is_active"),
+        // Cast : archived_at vient d'une migration récente, types Supabase pas à jour
+        (supabase as unknown as { from: (t: string) => { select: (s: string) => Promise<{ data: Array<{ id: string; full_name: string | null; email: string; created_at: string; is_active: boolean | null; archived_at: string | null }> }> } })
+          .from("profiles")
+          .select("id, full_name, email, created_at, is_active, archived_at"),
         supabase.from("prospects").select("owner_id, status"),
         supabase.from("call_logs").select("owner_id"),
       ]);
       return (profiles || []).map((p) => {
-        const own = (prospects || []).filter((x) => x.owner_id === p.id);
+        const own = (prospects || []).filter((x: { owner_id: string | null }) => x.owner_id === p.id);
         return {
           ...p,
           total: own.length,
-          interested: own.filter((x) => x.status === "interesse").length,
-          converted: own.filter((x) => x.status === "converti").length,
-          calls: (calls || []).filter((x) => x.owner_id === p.id).length,
+          interested: own.filter((x: { status: string }) => x.status === "interesse").length,
+          converted: own.filter((x: { status: string }) => x.status === "converti").length,
+          calls: (calls || []).filter((x: { owner_id: string | null }) => x.owner_id === p.id).length,
         };
       });
     },
   });
+
+  const active = (data || []).filter((p) => !p.archived_at);
+  const archived = (data || []).filter((p) => !!p.archived_at);
+  const visible = showArchived ? data || [] : active;
 
   const toggleActive = useMutation({
     mutationFn: async ({ id, active }: { id: string; active: boolean }) => {
@@ -293,7 +300,18 @@ function EquipePage() {
         <InviteDialog onInvited={() => refetch()} />
       </div>
       <Card>
-        <CardHeader><CardTitle>Collaborateurs</CardTitle></CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
+          <CardTitle>Collaborateurs</CardTitle>
+          {archived.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowArchived((s) => !s)}
+              className="text-xs text-muted-foreground hover:text-foreground underline"
+            >
+              {showArchived ? `Masquer ${archived.length} archivé(s)` : `Afficher ${archived.length} archivé(s)`}
+            </button>
+          )}
+        </CardHeader>
         <CardContent className="p-0">
           {isLoading ? (
             <p className="p-6 text-muted-foreground">Chargement…</p>
@@ -311,14 +329,18 @@ function EquipePage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(data || []).map((p) => (
-                  <TableRow key={p.id} className={p.is_active === false ? "opacity-50" : ""}>
+                {visible.map((p) => (
+                  <TableRow key={p.id} className={p.archived_at ? "opacity-40" : (p.is_active === false ? "opacity-60" : "")}>
                     <TableCell>
-                      <div className="font-medium">
+                      <div className="font-medium flex items-center gap-1.5 flex-wrap">
                         {p.full_name || p.email}
-                        {p.is_active === false && (
-                          <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">Désactivé</span>
-                        )}
+                        {p.archived_at ? (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+                            Archivé
+                          </span>
+                        ) : p.is_active === false ? (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">Désactivé</span>
+                        ) : null}
                       </div>
                       <div className="text-xs text-muted-foreground">{p.email}</div>
                     </TableCell>
@@ -327,14 +349,18 @@ function EquipePage() {
                     <TableCell className="text-right">{p.interested}</TableCell>
                     <TableCell className="text-right font-semibold text-emerald-600">{p.converted}</TableCell>
                     <TableCell className="text-right">
-                      <Switch
-                        checked={p.is_active !== false}
-                        onCheckedChange={(checked) => toggleActive.mutate({ id: p.id, active: checked })}
-                      />
+                      {p.archived_at ? (
+                        <span className="text-xs text-muted-foreground italic">—</span>
+                      ) : (
+                        <Switch
+                          checked={p.is_active !== false}
+                          onCheckedChange={(checked) => toggleActive.mutate({ id: p.id, active: checked })}
+                        />
+                      )}
                     </TableCell>
                     <TableCell className="text-right p-2">
-                      {/* L'admin ne peut pas se supprimer lui-même */}
-                      {currentUser?.id !== p.id && (
+                      {/* Le bouton n'apparait que pour les actifs ≠ moi-même */}
+                      {currentUser?.id !== p.id && !p.archived_at && (
                         <DeleteCollaboratorDialog
                           collaborator={{
                             id: p.id,
@@ -355,8 +381,8 @@ function EquipePage() {
         </CardContent>
       </Card>
       <div className="text-xs text-muted-foreground space-y-1">
-        <p><strong>Désactiver</strong> (switch) : déconnecte et bloque la reconnexion, sans supprimer les données. Réversible.</p>
-        <p><strong>Supprimer</strong> (🗑️) : efface définitivement le compte. Les prospects, appels, follow-ups sont automatiquement réassignés à toi.</p>
+        <p><strong>Désactiver</strong> (switch) : déconnecte et bloque la reconnexion, sans archiver. Réversible — tu peux le réactiver à tout moment.</p>
+        <p><strong>Retirer de l'équipe</strong> (🗑️) : archive le collaborateur. Il ne peut plus se connecter, mais <strong>tous ses prospects/appels/follow-ups restent dans le CRM</strong> avec son nom comme propriétaire — pour préserver l'historique et éviter les doublons.</p>
       </div>
     </div>
   );

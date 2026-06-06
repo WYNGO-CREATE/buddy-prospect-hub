@@ -1,13 +1,15 @@
 /**
- * ─── delete-collaborator ──────────────────────────────────────────────
+ * ─── delete-collaborator (ARCHIVAGE) ──────────────────────────────────
  *
- * Supprime DÉFINITIVEMENT un collaborateur :
+ * Retire un collaborateur de l'équipe sans détruire son historique :
  *   1. Vérifie que l'appelant est admin
- *   2. Refuse l'auto-suppression (l'admin ne peut pas se supprimer lui-même)
- *   3. Réassigne TOUS les prospects/call_logs/follow_ups du collaborateur
- *      vers l'admin qui supprime — JAMAIS de données perdues
- *   4. Supprime l'utilisateur auth.users (cascade → profiles + user_roles)
- *   5. Retourne un résumé : nb prospects réassignés, nb call_logs, etc.
+ *   2. Refuse l'auto-retrait
+ *   3. Marque le profile comme archivé (archived_at, archived_by, is_active=false)
+ *   4. Supprime son compte auth.users → il ne peut plus se connecter
+ *   5. NE RÉASSIGNE PAS ses prospects → ils gardent son owner_id
+ *      → l'historique reste lisible ("ancien collaborateur") et l'équipe
+ *        peut continuer à voir "déjà contacté par X" pour éviter les doublons
+ *   6. Retourne un résumé
  *
  * Body : { user_id: string }
  * Auth : JWT d'un admin
@@ -38,7 +40,7 @@ Deno.serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return json({ error: "Non autorisé" }, 401);
 
-    // 1. Vérifier que l'appelant est bien admin
+    // 1. Vérifier que l'appelant est admin
     const userClient = createClient(SUPABASE_URL, ANON, {
       global: { headers: { Authorization: authHeader } },
     });
@@ -59,9 +61,9 @@ Deno.serve(async (req) => {
     const targetId = String(body.user_id ?? "").trim();
     if (!targetId) return json({ error: "user_id manquant" }, 400);
 
-    // 3. Empêcher l'auto-suppression
+    // 3. Empêcher l'auto-retrait
     if (targetId === userData.user.id) {
-      return json({ error: "Vous ne pouvez pas vous supprimer vous-même" }, 400);
+      return json({ error: "Vous ne pouvez pas vous retirer vous-même" }, 400);
     }
 
     // 4. Vérifier que le collaborateur existe
@@ -74,71 +76,49 @@ Deno.serve(async (req) => {
       return json({ error: "Collaborateur introuvable" }, 404);
     }
 
-    // 5. Réassigner toutes ses données vers l'admin qui supprime
-    const adminId = userData.user.id;
+    // 5. Stats pour le toast UI (combien de données conservées)
     const stats: Record<string, number> = {};
-
-    // 5a. prospects
-    const { data: prospects, error: pErr } = await admin
-      .from("prospects")
-      .update({ owner_id: adminId })
-      .eq("owner_id", targetId)
-      .select("id");
-    if (pErr) return json({ error: `Échec réassignation prospects : ${pErr.message}` }, 500);
-    stats.prospects_reassigned = (prospects || []).length;
-
-    // 5b. call_logs (si la table existe et a owner_id)
     try {
-      const { data: calls } = await admin
-        .from("call_logs")
-        .update({ owner_id: adminId })
-        .eq("owner_id", targetId)
-        .select("id");
-      stats.call_logs_reassigned = (calls || []).length;
-    } catch {/* table peut ne pas avoir owner_id */}
-
-    // 5c. follow_ups
+      const { count } = await admin.from("prospects").select("id", { count: "exact", head: true }).eq("owner_id", targetId);
+      stats.prospects_kept = count || 0;
+    } catch {/* table peut ne pas exister */}
     try {
-      const { data: follows } = await admin
-        .from("follow_ups")
-        .update({ owner_id: adminId })
-        .eq("owner_id", targetId)
-        .select("id");
-      stats.follow_ups_reassigned = (follows || []).length;
+      const { count } = await admin.from("call_logs").select("id", { count: "exact", head: true }).eq("owner_id", targetId);
+      stats.calls_kept = count || 0;
+    } catch {/* idem */}
+    try {
+      const { count } = await admin.from("follow_ups").select("id", { count: "exact", head: true }).eq("owner_id", targetId);
+      stats.followups_kept = count || 0;
     } catch {/* idem */}
 
-    // 5d. prospect_comments (si applicable)
-    try {
-      const { data: comments } = await admin
-        .from("prospect_comments")
-        .update({ author_id: adminId })
-        .eq("author_id", targetId)
-        .select("id");
-      stats.comments_reassigned = (comments || []).length;
-    } catch {/* idem */}
+    // 6. ARCHIVAGE — on garde le profile pour préserver l'historique
+    const { error: archErr } = await admin
+      .from("profiles")
+      .update({
+        archived_at: new Date().toISOString(),
+        archived_by: userData.user.id,
+        is_active: false,
+      })
+      .eq("id", targetId);
+    if (archErr) return json({ error: `Échec archivage : ${archErr.message}` }, 500);
 
-    // 6. Supprimer le user_roles (avant le auth.user pour éviter les FK orphan)
+    // 7. Retirer son rôle (il ne doit plus avoir de permissions)
     await admin.from("user_roles").delete().eq("user_id", targetId);
 
-    // 7. Supprimer le profile (au cas où la cascade auth ne le ferait pas)
-    await admin.from("profiles").delete().eq("id", targetId);
-
-    // 8. Supprimer l'utilisateur Auth (Supabase Admin API)
+    // 8. Supprimer auth.users → ne peut plus se connecter
+    //    On capture l'erreur : si ça échoue, le profile reste archivé donc OK
+    //    (is_active=false bloque déjà la connexion côté UI/RLS).
     const { error: delErr } = await admin.auth.admin.deleteUser(targetId);
     if (delErr) {
-      // On a déjà nettoyé profiles/roles → on signale mais on n'est pas en
-      // état corrompu. Le user reste juste dans auth.users (peut être nettoyé
-      // à la main au pire).
-      return json({
-        warning: `User profile supprimé mais auth.user pas supprimé : ${delErr.message}`,
-        stats,
-      }, 207);
+      console.warn("[delete-collaborator] auth.deleteUser failed:", delErr.message);
     }
 
     return json({
       ok: true,
-      deleted: { id: target.id, email: target.email, full_name: target.full_name },
+      archived: { id: target.id, email: target.email, full_name: target.full_name },
       stats,
+      mode: "archive",
+      message: `${target.full_name || target.email} retiré de l'équipe. Ses ${stats.prospects_kept || 0} prospects restent dans la base avec son nom comme propriétaire historique.`,
     });
   } catch (e) {
     console.error("[delete-collaborator]", e);
