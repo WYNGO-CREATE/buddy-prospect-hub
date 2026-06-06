@@ -538,24 +538,30 @@ function ProspectDetail() {
                 </dt>
                 <dd className="mt-0.5">
                   {(() => {
-                    const briefActivity = (prospect as { brief_activity?: string | null }).brief_activity;
+                    /** Force la première lettre en majuscule (les sorties IA
+                     *  arrivent parfois en minuscule selon le modèle). */
+                    const capFirst = (s: string) =>
+                      s.length === 0 ? s : s.charAt(0).toUpperCase() + s.slice(1);
+
+                    const briefActivity = (prospect as { brief_activity?: string | null }).brief_activity?.trim();
                     const trade = findTradeByNaf((prospect as { naf?: string | null }).naf);
-                    if (briefActivity && briefActivity.trim().length > 0) {
+                    const industry = (prospect as { industry?: string | null }).industry;
+
+                    if (briefActivity) {
                       return (
                         <div className="space-y-1">
                           {trade?.label && (
                             <span className="inline-block text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-primary/10 text-primary mr-1.5">
-                              {trade.label}
+                              {capFirst(trade.label)}
                             </span>
                           )}
-                          <p className="text-sm leading-relaxed">{briefActivity}</p>
+                          <p className="text-sm leading-relaxed">{capFirst(briefActivity)}</p>
                         </div>
                       );
                     }
-                    if (trade?.label) {
-                      return <span>{trade.label}</span>;
-                    }
-                    return <span>{(prospect as { industry?: string | null }).industry || "—"}</span>;
+                    if (trade?.label) return <span>{capFirst(trade.label)}</span>;
+                    if (industry) return <span>{capFirst(industry)}</span>;
+                    return <span>—</span>;
                   })()}
                 </dd>
               </div>
