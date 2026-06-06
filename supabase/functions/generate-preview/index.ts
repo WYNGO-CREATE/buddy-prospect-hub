@@ -184,83 +184,133 @@ async function fetchPlacesData(company: string, location: string | null): Promis
 // COPY IA — Claude Sonnet 4.6 (priorité) → Gemini Flash (fallback)
 // ════════════════════════════════════════════════════════════════════
 
+const OBJECTIVE_LABELS: Record<string, string> = {
+  more_bookings: "obtenir plus de réservations / rendez-vous via le site",
+  online_sales: "vendre des produits directement en ligne",
+  showcase: "présenter l'entreprise comme une vitrine professionnelle",
+  lead_generation: "générer des demandes de devis / contacts qualifiés",
+  reduce_calls: "désengorger le standard en répondant aux questions courantes en ligne",
+};
+
+const TONE_DESCRIPTIONS: Record<string, string> = {
+  warm: "chaleureux, artisanal, familial — fait sentir l'humain derrière le métier",
+  elegant: "élégant, raffiné, soigné — registre presque éditorial, peu de superlatifs",
+  modern: "moderne, direct, contemporain — phrases courtes, formules tranchées",
+  expert: "expert, posé, technique — montre la maîtrise, sans jargon inutile",
+  playful: "décontracté, convivial, parfois espiègle — sourit sans tomber dans le familier",
+};
+
 type CopyOutput = {
+  sector: Sector;           // L'IA confirme/corrige le secteur d'après tout le contexte
   hero_title: string;       // 3-6 mots, percutant, ancré dans le métier
   hero_tagline: string;     // 12-22 mots, valeur ajoutée + ville si dispo
   signature_phrase: string; // citation forte, 8-16 mots, philosophie de l'entreprise
   about_title: string;      // eyebrow (2-3 mots) : "Notre histoire", "Notre maison"
-  about_text: string;       // 50-100 mots, raconte l'entreprise (au "nous"), ancrage local
-  services: Array<{ title: string; description: string }>; // 3 spécialités max 12 mots
+  about_text: string;       // 60-110 mots, raconte l'entreprise (au "nous"), ancrage local
+  services: Array<{ title: string; description: string }>; // 3 spécialités précises
   values: Array<{ title: string; description: string }>;   // 3 engagements/valeurs courts
   cta_text: string;         // CTA principal (1-3 mots, sector-spécifique)
   cta_secondary?: string;   // CTA secondaire (1-3 mots)
 };
 
-function buildCopyPrompt(input: {
+type CopyPromptInput = {
   company: string;
-  sector: Sector;
   city?: string | null;
   rating?: number;
+  reviewCount?: number;
   reviewsExcerpt?: string;
-  vibeDescription: string;
-}): string {
+  // Brief commercial (depuis prospects.brief_*)
+  brief_activity?: string | null;
+  brief_objective?: string | null;
+  brief_tone?: string | null;
+  brief_keywords?: string[] | null;
+  // Données entreprise complémentaires
+  naf?: string | null;
+  industry?: string | null;
+  website?: string | null;
+};
+
+function buildCopyPrompt(input: CopyPromptInput): string {
   const reviewsBlock = input.reviewsExcerpt
-    ? `\n\nExtraits d'avis Google réels (à utiliser comme inspiration pour le ton et les thèmes — ne pas citer textuellement) :\n${input.reviewsExcerpt}`
+    ? `\n\n═══ AVIS GOOGLE RÉCENTS (contexte direct) ═══\nCes avis sont signés par de vrais clients. Identifie les THÈMES qui reviennent (ce que les gens aiment réellement chez eux) et fais résonner ton copy avec — sans jamais les citer textuellement.\n\n${input.reviewsExcerpt}`
+    : "";
+
+  const briefBlock = (input.brief_activity || (input.brief_keywords && input.brief_keywords.length > 0))
+    ? `\n\n═══ BRIEF COMMERCIAL (à respecter à la lettre) ═══\n` +
+      (input.brief_activity ? `Activité précise : ${input.brief_activity}\n` : "") +
+      (input.brief_objective ? `Objectif business : ${OBJECTIVE_LABELS[input.brief_objective] || input.brief_objective}\n` : "") +
+      (input.brief_tone ? `Ton souhaité : ${TONE_DESCRIPTIONS[input.brief_tone] || input.brief_tone}\n` : "") +
+      (input.brief_keywords && input.brief_keywords.length > 0 ? `Produits / spécialités phares : ${input.brief_keywords.join(", ")}\n` : "")
     : "";
 
   return `Tu rédiges le copy d'un site web vitrine pour une entreprise française de proximité.
 
-═══ CONTEXTE ═══
-Entreprise : ${input.company}
-Secteur : ${input.sector}
-${input.city ? `Ville : ${input.city}` : ""}
-${input.rating ? `Note Google : ${input.rating}/5` : ""}
-
-Vibe attendue : ${input.vibeDescription}
+═══ DONNÉES ENTREPRISE ═══
+Société           : ${input.company}
+${input.naf ? `Code NAF          : ${input.naf}` : ""}
+${input.industry ? `Libellé activité  : ${input.industry}` : ""}
+${input.city ? `Ville             : ${input.city}` : ""}
+${input.website ? `Site existant     : ${input.website}` : ""}
+${input.rating ? `Note Google       : ${input.rating}/5 (${input.reviewCount || 0} avis)` : ""}
+${briefBlock}
 ${reviewsBlock}
 
-═══ RÈGLES STRICTES ═══
-1. Tu rédiges UNIQUEMENT en français, naturel, chaleureux mais pro
-2. JAMAIS de marketing creux ("nous mettons un point d'honneur", "votre satisfaction notre priorité"...)
-3. Évite les superlatifs vides ("incomparable", "exceptionnel" sauf si pertinent)
-4. Mentionne la ville (${input.city || "France"}) au moins une fois si pertinent (ancrage local)
-5. Parle au "nous" pour la marque, à la 2e personne du pluriel ("vous") pour le client
-6. Reste CONCRET : produits/services réels du secteur, pas d'abstractions
-7. Le ton doit faire écho à : "${input.vibeDescription}"
+═══ TÂCHE ═══
+Tu produis un copy ULTRA-PERSONNALISÉ qui :
+  • Reflète l'activité PRÉCISE (pas une généralité du secteur)
+  • Reprend les thèmes qui ressortent des avis Google (qualités réelles que les clients voient)
+  • Respecte le ton du brief si fourni
+  • S'aligne sur l'objectif business (oriente les CTAs en conséquence)
+  • Mentionne au moins UN détail concret du brief / des avis (produit, signature, savoir-faire)
 
-═══ STRUCTURE À PRODUIRE (JSON STRICT) ═══
+═══ INTERDICTIONS ABSOLUES (provoque un rejet) ═══
+  ✘ "passion", "passionnés", "qualité", "satisfaction client", "leader", "incontournable"
+  ✘ "nous mettons un point d'honneur", "votre satisfaction notre priorité"
+  ✘ "excellence", "service irréprochable", "professionnalisme"
+  ✘ Tout ce qui ressemble à du copy IA générique de site vitrine 2015
+  ✘ Phrases creuses sans contenu concret ("nous nous engageons à…", "depuis toujours…")
+
+═══ EXIGENCES ═══
+  ✓ Au moins 2 détails CONCRETS (un produit nommé, une technique, un ingrédient, un quartier, une année…)
+  ✓ Phrases courtes ou rythmées, pas de blocs lourds
+  ✓ "nous" pour la marque, "vous" pour le client
+  ✓ Si la ville est connue, mentionne-la au moins 1 fois
+  ✓ Cohérence : si l'objectif est more_bookings → CTA "Réserver", "Prendre RDV". online_sales → "Commander", "Voir la boutique". lead_generation → "Demander un devis"
+
+═══ STRUCTURE JSON STRICTE ═══
 {
-  "hero_title": "Titre h1 (3-6 mots, percutant, évocateur — ex: 'L'art du pain depuis 1973' ou 'La table des saisons')",
-  "hero_tagline": "Sous-titre (12-22 mots, ce que vous offrez + ville)",
-  "signature_phrase": "Phrase signature courte (8-16 mots, votre philosophie, presque comme une citation)",
-  "about_title": "Eyebrow section À propos (2-3 mots, ex: 'Notre histoire', 'Notre maison', 'Notre métier')",
-  "about_text": "Paragraphe (50-100 mots) au 'nous', évoque le savoir-faire, l'ancrage local, ce qui vous distingue. Concret, vivant.",
+  "sector": "boulangerie" | "restaurant" | "coiffure" | "commerce" | "artisan" | "service",
+  "hero_title": "Titre h1 (3-6 mots, évocateur, ancré dans l'activité réelle)",
+  "hero_tagline": "Sous-titre (14-24 mots, valeur précise + ville)",
+  "signature_phrase": "Phrase signature courte (8-16 mots, presque une citation, leur philosophie)",
+  "about_title": "Eyebrow section À propos (2-3 mots — pas 'Notre histoire' systématique, varie)",
+  "about_text": "Paragraphe 60-110 mots au 'nous', concret et vivant, avec au moins 1 détail spécifique",
   "services": [
-    { "title": "Spécialité 1 (1-3 mots)", "description": "1 phrase concrète (10-18 mots)" },
-    { "title": "Spécialité 2 (1-3 mots)", "description": "1 phrase concrète (10-18 mots)" },
-    { "title": "Spécialité 3 (1-3 mots)", "description": "1 phrase concrète (10-18 mots)" }
+    { "title": "Spécialité 1 (1-3 mots, NOM concret)", "description": "1 phrase concrète (12-22 mots) avec détail" },
+    { "title": "Spécialité 2 (1-3 mots, NOM concret)", "description": "1 phrase concrète (12-22 mots) avec détail" },
+    { "title": "Spécialité 3 (1-3 mots, NOM concret)", "description": "1 phrase concrète (12-22 mots) avec détail" }
   ],
   "values": [
-    { "title": "Engagement 1 (3-6 mots)", "description": "1 phrase courte (8-14 mots)" },
-    { "title": "Engagement 2 (3-6 mots)", "description": "1 phrase courte (8-14 mots)" },
-    { "title": "Engagement 3 (3-6 mots)", "description": "1 phrase courte (8-14 mots)" }
+    { "title": "Engagement 1 (3-6 mots, concret)", "description": "1 phrase courte (8-16 mots, NON-vide)" },
+    { "title": "Engagement 2 (3-6 mots, concret)", "description": "1 phrase courte (8-16 mots, NON-vide)" },
+    { "title": "Engagement 3 (3-6 mots, concret)", "description": "1 phrase courte (8-16 mots, NON-vide)" }
   ],
-  "cta_text": "CTA principal (1-3 mots, action concrète — ex: 'Voir nos horaires', 'Réserver une table', 'Prendre RDV')",
-  "cta_secondary": "CTA secondaire (1-3 mots, ex: 'Notre histoire', 'Notre carte', 'Nos services')"
+  "cta_text": "CTA principal aligné sur l'objectif (1-3 mots)",
+  "cta_secondary": "CTA secondaire (1-3 mots)"
 }
+
+Pour le champ "sector", choisis CELUI qui correspond à l'activité réelle :
+  • boulangerie : boulanger, pâtissier, viennoiserie
+  • restaurant  : restaurant, brasserie, bistrot, pizzeria, traiteur sur place
+  • coiffure    : coiffeur, barbier, esthétique, onglerie, spa
+  • commerce    : boutique de produits (fleuriste, fromager, caviste, librairie, déco…)
+  • artisan     : plombier, électricien, peintre, menuisier, maçon, carreleur, charpentier
+  • service     : autre service à la personne ou aux pros (comptable, conseil, formation, etc.)
 
 Réponds UNIQUEMENT avec le JSON. Aucun texte avant ou après.`;
 }
 
-async function generateCopy(input: {
-  company: string;
-  sector: Sector;
-  city?: string | null;
-  rating?: number;
-  hours?: string[];
-  reviewsExcerpt?: string;
-  vibeDescription: string;
-}): Promise<{ copy: CopyOutput; model: string }> {
+async function generateCopy(input: CopyPromptInput): Promise<{ copy: CopyOutput; model: string }> {
   const prompt = buildCopyPrompt(input);
 
   // ── Provider 1 : Claude Sonnet 4.6 (qualité MAX FR) ──
@@ -275,7 +325,8 @@ async function generateCopy(input: {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
-        max_tokens: 2048,
+        max_tokens: 3000,
+        temperature: 0.7, // un peu moins de hallucinations, plus de fidélité au brief
         messages: [{ role: "user", content: prompt }],
       }),
     });
@@ -1002,26 +1053,45 @@ serve(async (req) => {
     const company = prospect.company || `${prospect.first_name} ${prospect.last_name}`;
     const city = (prospect.location || "").split(/[, ]/).find((s: string) => /^[A-ZÉÈÀÂ]/.test(s)) || prospect.location || null;
 
-    // 1. Google Places
+    // 1. Google Places (photos + reviews + horaires)
     const places = await fetchPlacesData(company, prospect.location);
 
-    // 2. Détection secteur + vibe
-    const sector = detectSector(prospect.naf || null, company, prospect.industry || null);
-    const theme = SECTOR_THEME[sector];
-
-    // 3. Génération du copy IA
+    // 2. Génération du copy IA — l'IA détermine elle-même le sector d'après
+    //    le brief + les données + les avis, ce qui est beaucoup plus fiable
+    //    que la détection regex sur le NAF (qui se trompe sur les artisans
+    //    avec NAF générique).
+    //    On donne TOUS les avis complets (pas juste 150 chars) pour que
+    //    Claude puisse vraiment capter les thèmes qui reviennent.
     const reviewsExcerpt = places.reviews
-      .slice(0, 2)
-      .map((r) => `- "${r.text.slice(0, 150)}"`)
+      .slice(0, 5)
+      .map((r) => `- (${r.rating}★ par ${r.author}) "${r.text.slice(0, 400)}"`)
       .join("\n");
-    const { copy, model } = await generateCopy({
+
+    const { copy: rawCopy, model } = await generateCopy({
       company,
-      sector,
       city,
       rating: places.rating,
+      reviewCount: places.reviewCount,
       reviewsExcerpt,
-      vibeDescription: theme.vibeDescription,
+      // Brief commercial (peut être vide → l'IA se débrouille avec les données)
+      brief_activity: prospect.brief_activity,
+      brief_objective: prospect.brief_objective,
+      brief_tone: prospect.brief_tone,
+      brief_keywords: prospect.brief_keywords,
+      // Données entreprise additionnelles
+      naf: prospect.naf,
+      industry: prospect.industry,
+      website: prospect.website,
     });
+
+    // Sanitization du sector retourné par l'IA (sécurité — au cas où elle
+    // renvoie un truc inattendu, on fallback sur detectSector classique)
+    const validSectors: Sector[] = ["boulangerie", "restaurant", "coiffure", "commerce", "artisan", "service"];
+    const sector: Sector = validSectors.includes(rawCopy.sector)
+      ? rawCopy.sector
+      : detectSector(prospect.naf || null, company, prospect.industry || null);
+    const theme = SECTOR_THEME[sector];
+    const copy = rawCopy;
 
     // 4. Construction HTML
     const slug = makeSlug(company);
@@ -1081,7 +1151,13 @@ serve(async (req) => {
         source_data: {
           places: { rating: places.rating, reviewCount: places.reviewCount, phone: places.phone, address: places.address, photos_count: places.photos.length },
           copy,
-          prospect_snapshot: { company, city, naf: prospect.naf },
+          brief_used: {
+            activity: prospect.brief_activity,
+            objective: prospect.brief_objective,
+            tone: prospect.brief_tone,
+            keywords: prospect.brief_keywords,
+          },
+          prospect_snapshot: { company, city, naf: prospect.naf, industry: prospect.industry, website: prospect.website },
         },
         generated_by: user.id,
       })

@@ -16,6 +16,7 @@ import { ArrowLeft, PhoneCall, CalendarClock, History, Check, MessageSquare, Tra
 import { CallModeDrawer } from "@/components/call-mode-drawer";
 import { PitchGeneratorDialog } from "@/components/pitch-generator-dialog";
 import { InstantPreviewDialog } from "@/components/instant-preview-dialog";
+import { PreviewBriefCard } from "@/components/preview-brief-card";
 import { PROSPECT_STATUSES, STATUS_LABELS, STATUS_VARIANTS, EVENT_LABELS, type ProspectStatus } from "@/lib/crm";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -551,6 +552,20 @@ function ProspectDetail() {
           )}
         </CardContent>
       </Card>
+
+      {/* ⚡ Brief Aperçu : carte d'enrichissement qui alimente l'IA lors de la
+          génération de l'Aperçu Instantané. Plus c'est rempli, plus le copy
+          est précis et ancré dans l'activité réelle du prospect. */}
+      <PreviewBriefCard
+        prospectId={prospect.id}
+        initial={{
+          activity: (prospect as { brief_activity?: string | null }).brief_activity ?? "",
+          objective: (prospect as { brief_objective?: string | null }).brief_objective ?? "",
+          tone: (prospect as { brief_tone?: string | null }).brief_tone ?? "",
+          keywords: (prospect as { brief_keywords?: string[] | null }).brief_keywords ?? [],
+          enriched_at: (prospect as { brief_enriched_at?: string | null }).brief_enriched_at ?? null,
+        }}
+      />
 
       <Tabs defaultValue="comments">
         <TabsList>
