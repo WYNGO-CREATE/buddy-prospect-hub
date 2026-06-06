@@ -10,7 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { UserPlus, Copy, Check } from "lucide-react";
+import { UserPlus, Copy, Check, Trash2, Loader2, AlertTriangle } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/equipe")({
@@ -126,8 +127,129 @@ function InviteDialog({ onInvited }: { onInvited: () => void }) {
   );
 }
 
+function DeleteCollaboratorDialog({
+  collaborator,
+  onDeleted,
+}: {
+  collaborator: { id: string; full_name: string | null; email: string; total: number; calls: number };
+  onDeleted: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const expectedConfirm = (collaborator.full_name || collaborator.email).trim();
+
+  const del = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke("delete-collaborator", {
+        body: { user_id: collaborator.id },
+      });
+      if (error) {
+        let detail = error.message;
+        try {
+          const ctx = await (error as { context?: { json?: () => Promise<unknown> } }).context?.json?.();
+          if ((ctx as { error?: string })?.error) detail = (ctx as { error: string }).error;
+        } catch {/* noop */}
+        throw new Error(detail);
+      }
+      if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error);
+      return data as { stats: Record<string, number> };
+    },
+    onSuccess: (data) => {
+      const reassigned = data.stats?.prospects_reassigned ?? 0;
+      const calls = data.stats?.call_logs_reassigned ?? 0;
+      toast.success("Collaborateur supprimé", {
+        description: reassigned > 0 || calls > 0
+          ? `${reassigned} prospects et ${calls} appels réassignés vers toi.`
+          : "Aucune donnée à réassigner.",
+      });
+      setOpen(false);
+      setConfirmText("");
+      onDeleted();
+    },
+    onError: (e: Error) => toast.error("Suppression échouée", { description: e.message }),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setConfirmText(""); }}>
+      <DialogTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+          title="Supprimer définitivement"
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-rose-700 dark:text-rose-400">
+            <AlertTriangle className="h-5 w-5" />
+            Supprimer ce collaborateur ?
+          </DialogTitle>
+          <DialogDescription>
+            Cette action est <strong>irréversible</strong>. Le compte sera supprimé définitivement.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <div className="rounded-lg border bg-muted/40 p-3 text-sm">
+            <p className="font-medium">{collaborator.full_name || "Sans nom"}</p>
+            <p className="text-xs text-muted-foreground">{collaborator.email}</p>
+          </div>
+
+          {(collaborator.total > 0 || collaborator.calls > 0) && (
+            <div className="rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50/60 dark:bg-amber-950/30 p-3 text-sm">
+              <p className="font-medium text-amber-900 dark:text-amber-200 mb-1">
+                Réassignation automatique vers toi :
+              </p>
+              <ul className="text-xs text-amber-800 dark:text-amber-300 space-y-0.5 pl-4 list-disc">
+                {collaborator.total > 0 && <li>{collaborator.total} prospect(s)</li>}
+                {collaborator.calls > 0 && <li>{collaborator.calls} appel(s) loggé(s)</li>}
+                <li>Follow-ups et commentaires</li>
+              </ul>
+              <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-2 italic">
+                Aucune donnée perdue — tout est récupéré sous ton ownership.
+              </p>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <Label htmlFor="confirm-input" className="text-xs">
+              Pour confirmer, retape exactement <code className="px-1 py-0.5 rounded bg-muted text-foreground">{expectedConfirm}</code> :
+            </Label>
+            <Input
+              id="confirm-input"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder={expectedConfirm}
+              autoComplete="off"
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={del.isPending}>
+            Annuler
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={() => del.mutate()}
+            disabled={del.isPending || confirmText.trim() !== expectedConfirm}
+            className="gap-2"
+          >
+            {del.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            Supprimer définitivement
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function EquipePage() {
   const qc = useQueryClient();
+  const { user: currentUser } = useAuth();
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["team-stats"],
     queryFn: async () => {
@@ -185,6 +307,7 @@ function EquipePage() {
                   <TableHead className="text-right">Intéressés</TableHead>
                   <TableHead className="text-right">Convertis</TableHead>
                   <TableHead className="text-right">Actif</TableHead>
+                  <TableHead className="text-right w-12">{/* Actions */}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -209,6 +332,21 @@ function EquipePage() {
                         onCheckedChange={(checked) => toggleActive.mutate({ id: p.id, active: checked })}
                       />
                     </TableCell>
+                    <TableCell className="text-right p-2">
+                      {/* L'admin ne peut pas se supprimer lui-même */}
+                      {currentUser?.id !== p.id && (
+                        <DeleteCollaboratorDialog
+                          collaborator={{
+                            id: p.id,
+                            full_name: p.full_name,
+                            email: p.email,
+                            total: p.total,
+                            calls: p.calls,
+                          }}
+                          onDeleted={() => qc.invalidateQueries({ queryKey: ["team-stats"] })}
+                        />
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -216,9 +354,10 @@ function EquipePage() {
           )}
         </CardContent>
       </Card>
-      <p className="text-xs text-muted-foreground">
-        Désactiver un collaborateur le déconnecte et l'empêche de se reconnecter, sans supprimer ses données.
-      </p>
+      <div className="text-xs text-muted-foreground space-y-1">
+        <p><strong>Désactiver</strong> (switch) : déconnecte et bloque la reconnexion, sans supprimer les données. Réversible.</p>
+        <p><strong>Supprimer</strong> (🗑️) : efface définitivement le compte. Les prospects, appels, follow-ups sont automatiquement réassignés à toi.</p>
+      </div>
     </div>
   );
 }
