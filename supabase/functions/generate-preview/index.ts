@@ -348,7 +348,8 @@ function buildHtml(input: BuildInput): string {
   const heroPhoto = input.photos[0] || `https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=2400&q=85`;
   const galleryPhotos = input.photos.slice(1);
   const company = escapeHtml(input.company);
-  const canonicalUrl = `${input.supabase_url}/storage/v1/object/public/previews/${input.slug}.html`;
+  // URL canonique = la même que ce que le commercial envoie (view-preview proxy)
+  const canonicalUrl = `${input.supabase_url}/functions/v1/view-preview/${input.slug}`;
   const ogImage = heroPhoto;
   const ogTitle = `${input.company} — ${input.copy.hero_title}`;
   const ogDescription = input.copy.hero_tagline;
@@ -977,7 +978,11 @@ serve(async (req) => {
       });
     if (upErr) throw new Error(`Storage upload : ${upErr.message}`);
 
-    const publicUrl = `${supabaseUrl}/storage/v1/object/public/previews/${storagePath}`;
+    // ⚠️ On ne retourne PAS l'URL Storage directement : Supabase force
+    // Content-Type: text/plain sur les .html (protection XSS), donc le
+    // browser afficherait le code source. On passe par notre edge function
+    // `view-preview` qui sert avec le bon Content-Type: text/html.
+    const publicUrl = `${supabaseUrl}/functions/v1/view-preview/${slug}`;
 
     // 6. Insertion DB
     const { data: row, error: insErr } = await serviceClient
