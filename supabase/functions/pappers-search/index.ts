@@ -131,7 +131,7 @@ async function actionSearch(params: {
   const data = await callPappers("/recherche", apiParams);
   const resultats = (data?.resultats as PappersEntreprise[]) || [];
 
-  const entreprises = resultats.map((r) => {
+  const allMapped = resultats.map((r) => {
     const principal = r.dirigeants?.[0];
     return {
       siren: r.siren,
@@ -157,14 +157,43 @@ async function actionSearch(params: {
     };
   });
 
+  // ═══ Filtrage défensif côté serveur (Pappers peut hallucinosor) ═══
+  // Même si l'API Pappers est censée filtrer, on REJETTE les résultats
+  // dont le siege ne matche PAS la ville/CP demandés. Le commercial doit
+  // pouvoir cibler une zone géographique de façon 100% fiable.
+  function normalizeCity(s: string | null | undefined): string {
+    if (!s) return "";
+    return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
+  }
+  const requestedVille = normalizeCity(params.ville);
+  const requestedCp = (params.code_postal || "").trim();
+
+  const filtered = allMapped.filter((e) => {
+    if (requestedVille) {
+      const eVille = normalizeCity(e.ville);
+      if (!eVille || !eVille.includes(requestedVille)) return false;
+    }
+    if (requestedCp) {
+      const eCp = (e.code_postal || "").trim();
+      // Le CP de l'entreprise doit COMMENCER par le CP demandé
+      // (31000 demandé → 31000 OK, 31100 KO ; 75 demandé → 75001 OK)
+      if (!eCp || !eCp.startsWith(requestedCp)) return false;
+    }
+    return true;
+  });
+
+  const rejected = allMapped.length - filtered.length;
+
   return {
     ok: true,
-    entreprises,
+    entreprises: filtered,
     pagination: {
       page: (data?.page as number) || params.page || 1,
       par_page: (data?.par_page as number) || params.par_page || 20,
-      total: (data?.total as number) || entreprises.length,
+      total: (data?.total as number) || filtered.length,
     },
+    // Diagnostic pour debug — visible dans le toast côté UI si rejets
+    rejected_out_of_zone: rejected,
   };
 }
 

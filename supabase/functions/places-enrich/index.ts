@@ -45,13 +45,66 @@ type PlaceResult = {
   user_ratings: number | null;
   place_id: string | null;
   business_status: string | null;
+  matched_name: string | null;   // displayName du place retenu (debug)
+  match_confidence: number;      // 0-1 : score de fiabilité du match
+  rejected_reason?: string;      // si on a rejeté (mismatch) → phone & website mis à null
 };
+
+// ─── HELPERS DE MATCHING ──────────────────────────────────────────────
+function normalizeBusinessName(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/\b(sarl|sas|sasu|eurl|sa|snc|scop|sci|ei|eirl|gie|ets|etablissements|monsieur|madame)\b/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function significantTokens(name: string): string[] {
+  return normalizeBusinessName(name).split(" ").filter((t) => t.length >= 4);
+}
+
+/**
+ * Match score entre 2 noms d'entreprise (0 = pas match, 1 = match parfait).
+ *  - tokens longs (5+ chars) partagés → signal fort
+ *  - couples de tokens courts (4 chars) partagés → signal moyen
+ */
+function matchScore(pappersName: string, placesName: string): number {
+  const pappersTokens = significantTokens(pappersName);
+  const placesNorm = normalizeBusinessName(placesName);
+  if (pappersTokens.length === 0) return 0;
+  const shared = pappersTokens.filter((t) => placesNorm.includes(t));
+  if (shared.length === 0) return 0;
+  const sharedLong = shared.filter((t) => t.length >= 5);
+  if (sharedLong.length >= 2) return 1.0;
+  if (sharedLong.length === 1 && shared.length >= 2) return 0.85;
+  if (sharedLong.length === 1) return 0.7;
+  if (shared.length >= 3) return 0.7;
+  if (shared.length === 2) return 0.55;
+  return 0.4;
+}
+
+/** Le code postal de l'adresse Places matche-t-il le CP demandé ? */
+function addressMatchesPostalCode(address: string | null | undefined, expectedCp: string | null | undefined): boolean | null {
+  if (!expectedCp) return null; // pas de critère → pas de check
+  if (!address) return false;
+  // CP français = 5 chiffres dans l'adresse
+  const cpInAddress = address.match(/\b(\d{5})\b/);
+  if (!cpInAddress) return false;
+  return cpInAddress[1].startsWith(expectedCp.slice(0, 2));
+}
 
 /**
  * Recherche textuelle Places API (Text Search) — le mieux pour matcher "nom + ville".
  * Doc : https://developers.google.com/maps/documentation/places/web-service/text-search
  */
-async function placesTextSearch(query: string): Promise<PlaceResult | null> {
+async function placesTextSearch(
+  query: string,
+  searchedName: string,
+  expectedPostalCode?: string,
+): Promise<PlaceResult | null> {
   if (!PLACES_API_KEY) {
     throw new Error(
       "GOOGLE_PLACES_API_KEY non configurée. Ajoute-la dans Supabase Edge Functions Secrets.",
@@ -105,18 +158,69 @@ async function placesTextSearch(query: string): Promise<PlaceResult | null> {
 
   if (places.length === 0) return null;
 
-  // On prend le 1er résultat (Google trie déjà par pertinence). On pourrait
-  // ajouter du fuzzy matching mais en pratique c'est suffisant.
-  const p = places[0];
+  // ═══ FUZZY MATCH STRICT ═══
+  // On parcourt les 3 candidats et on score chaque match contre le nom
+  // Pappers. Si AUCUN n'a un score suffisant, on rejette toutes les données
+  // (phone/website) — mieux vaut renvoyer null que d'attribuer le numéro
+  // d'une autre entreprise au prospect.
+  let best: { place: typeof places[0]; score: number } | null = null;
+  for (const p of places) {
+    const placeName = p.displayName?.text || "";
+    if (!placeName) continue;
+    const score = matchScore(searchedName, placeName);
+    if (!best || score > best.score) best = { place: p, score };
+  }
+  if (!best) return null;
 
+  // ─── Décision finale ─────────────────────────────────────────────────
+  // - Score >= 0.7   : on garde tout (phone, website, address)
+  // - Score 0.55-0.7 : on garde adresse/rating, mais on N'AFFECTE PAS le
+  //                   phone/website (risque de mauvaise attribution)
+  // - Score < 0.55   : on rejette tout, place_id à null
+  const p = best.place;
+  const score = best.score;
+
+  // En plus, vérifier que le code postal matche (si fourni)
+  const cpOk = expectedPostalCode
+    ? addressMatchesPostalCode(p.formattedAddress, expectedPostalCode)
+    : null;
+  if (cpOk === false && score < 1.0) {
+    // CP non-matchant + match non-parfait → trop risqué, on rejette tout
+    return {
+      phone: null, website: null,
+      address: p.formattedAddress || null,
+      rating: null, user_ratings: null,
+      place_id: null,
+      business_status: null,
+      matched_name: p.displayName?.text || null,
+      match_confidence: score,
+      rejected_reason: `cp_mismatch (score=${score.toFixed(2)})`,
+    };
+  }
+
+  if (score < 0.55) {
+    return {
+      phone: null, website: null, address: null,
+      rating: null, user_ratings: null,
+      place_id: null, business_status: null,
+      matched_name: p.displayName?.text || null,
+      match_confidence: score,
+      rejected_reason: `low_match_score (${score.toFixed(2)})`,
+    };
+  }
+
+  const phoneTrusted = score >= 0.7;
   return {
-    phone: p.nationalPhoneNumber || p.internationalPhoneNumber || null,
-    website: p.websiteUri || null,
+    phone: phoneTrusted ? (p.nationalPhoneNumber || p.internationalPhoneNumber || null) : null,
+    website: phoneTrusted ? (p.websiteUri || null) : null,
     address: p.formattedAddress || null,
     rating: p.rating ?? null,
     user_ratings: p.userRatingCount ?? null,
     place_id: p.id ?? null,
     business_status: p.businessStatus ?? null,
+    matched_name: p.displayName?.text || null,
+    match_confidence: score,
+    rejected_reason: phoneTrusted ? undefined : `weak_match_no_contact_data (${score.toFixed(2)})`,
   };
 }
 
@@ -134,7 +238,7 @@ Deno.serve(async (req) => {
     if (code_postal && !city) queryParts.push(code_postal);
     const query = queryParts.join(" ");
 
-    const place = await placesTextSearch(query);
+    const place = await placesTextSearch(query, name, code_postal);
 
     return json({
       ok: true,
