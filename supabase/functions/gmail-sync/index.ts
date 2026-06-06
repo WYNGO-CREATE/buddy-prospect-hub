@@ -171,6 +171,7 @@ async function syncAccount(admin: any, account: any) {
 
       const fromEmail = extractEmail(headers["from"]);
       const toEmail = extractEmail(headers["to"]);
+      const fromName = (headers["from"] || "").replace(/<[^>]*>/, "").trim().replace(/^"|"$/g, "");
       const subject = headers["subject"] || null;
       const dateStr = headers["date"];
       const occurredAt = dateStr ? new Date(dateStr).toISOString() : new Date(parseInt(msg.internalDate || "0")).toISOString();
@@ -179,33 +180,59 @@ async function syncAccount(admin: any, account: any) {
       const isOutbound = fromEmail === account.email.toLowerCase();
       const matchEmail = isOutbound ? toEmail : fromEmail;
 
-      if (!matchEmail) { skipped++; continue; }
+      // ═══ MATCHING PROSPECT (3 niveaux, du plus fort au plus faible) ═══
+      let prospectId: string | null = null;
 
-      // Option STRICTE : matche uniquement les prospects existants
-      const { data: prospectId } = await admin
-        .rpc("find_prospect_by_email", { p_email: matchEmail, p_owner_id: account.user_id });
+      // 1. Match direct par email (le matchEmail est le contact externe)
+      if (matchEmail) {
+        const { data } = await admin
+          .rpc("find_prospect_by_email", { p_email: matchEmail, p_owner_id: account.user_id });
+        if (data) prospectId = data as string;
+      }
 
-      if (!prospectId) { skipped++; continue; }
+      // 2. Match par thread_id : si un autre message de ce thread est déjà
+      //    rattaché à un prospect (réponse dans une conversation existante),
+      //    on hérite du même prospect → permet de rattacher les réponses
+      //    même si l'adresse de l'expéditeur a légèrement changé (alias, etc.)
+      if (!prospectId && msg.threadId) {
+        const { data: threadMatch } = await admin
+          .from("messages")
+          .select("prospect_id")
+          .eq("owner_id", account.user_id)
+          .eq("thread_id", msg.threadId)
+          .not("prospect_id", "is", null)
+          .limit(1)
+          .maybeSingle();
+        if (threadMatch?.prospect_id) prospectId = threadMatch.prospect_id;
+      }
+
+      // 3. Sinon → on garde QUAND MÊME le message (prospect_id = null)
+      //    L'utilisateur le verra dans "Non rattachés" et pourra le lier
+      //    manuellement à un prospect.
 
       const content = getMessageContent(msg.payload) || msg.snippet || "";
 
       const { error: insertErr } = await admin.from("messages").insert({
-        prospect_id: prospectId,
+        prospect_id: prospectId,            // ✓ peut être null désormais
         owner_id: account.user_id,
         channel: "email",
         direction: isOutbound ? "outbound" : "inbound",
         subject,
-        content: content.slice(0, 50_000), // safety cap
+        content: content.slice(0, 50_000),
         external_id: msgId,
         thread_id: msg.threadId,
         from_email: fromEmail,
         to_email: toEmail,
+        // Champs pour afficher l'expéditeur même sans prospect rattaché :
+        sender_name: fromName || null,
+        sender_email: fromEmail,
+        recipient_email: toEmail,
         source: "gmail_sync",
-        is_read: isOutbound, // les emails envoyés sont "lus" par défaut
+        is_read: isOutbound,
         occurred_at: occurredAt,
       });
       if (!insertErr) imported++;
-      else skipped++;
+      else { skipped++; console.warn("insert msg failed:", insertErr.message); }
     } catch (e) {
       console.error("Sync msg failed", msgId, e);
       skipped++;

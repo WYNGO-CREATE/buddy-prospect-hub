@@ -67,7 +67,7 @@ type Direction = "inbound" | "outbound";
 
 type Message = {
   id: string;
-  prospect_id: string;
+  prospect_id: string | null;     // ← peut être null (orphelin)
   owner_id: string;
   channel: Channel;
   direction: Direction;
@@ -77,6 +77,10 @@ type Message = {
   is_archived: boolean;
   occurred_at: string;
   created_at: string;
+  sender_name?: string | null;
+  sender_email?: string | null;
+  recipient_email?: string | null;
+  thread_id?: string | null;
 };
 
 type Prospect = {
@@ -103,6 +107,8 @@ function InboxPage() {
   const [search, setSearch] = useState("");
   const [channelFilter, setChannelFilter] = useState<Channel | "all">("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "unread" | "archived">("all");
+  // Filtre direction/orphelin : "all" | "inbound" | "outbound" | "unattached"
+  const [boxFilter, setBoxFilter] = useState<"all" | "inbound" | "outbound" | "unattached">("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -118,7 +124,7 @@ function InboxPage() {
 
   // ─── Récupération des messages + prospects ───
   const { data: messages = [], isLoading } = useQuery({
-    queryKey: ["inbox-messages", user?.id, statusFilter],
+    queryKey: ["inbox-messages", user?.id, statusFilter, boxFilter],
     enabled: !!user,
     refetchInterval: 30_000,
     queryFn: async () => {
@@ -126,15 +132,37 @@ function InboxPage() {
       if (statusFilter === "unread") q = q.eq("is_read", false).eq("is_archived", false);
       else if (statusFilter === "archived") q = q.eq("is_archived", true);
       else q = q.eq("is_archived", false);
+
+      // Filtre boîte : Boîte de réception / Envoyés / Non rattachés
+      if (boxFilter === "inbound") q = q.eq("direction", "inbound");
+      else if (boxFilter === "outbound") q = q.eq("direction", "outbound");
+      else if (boxFilter === "unattached") q = q.is("prospect_id", null);
+
       const { data, error } = await q.limit(200);
       if (error) throw error;
       return (data || []) as Message[];
     },
   });
 
-  // Tous les prospects référencés dans les messages
+  // Compteurs pour les badges des filtres
+  const { data: counts } = useQuery({
+    queryKey: ["inbox-counts", user?.id],
+    enabled: !!user,
+    refetchInterval: 30_000,
+    queryFn: async () => {
+      const { count: cIn } = await supabase.from("messages")
+        .select("id", { count: "exact", head: true }).eq("direction", "inbound").eq("is_archived", false);
+      const { count: cOut } = await supabase.from("messages")
+        .select("id", { count: "exact", head: true }).eq("direction", "outbound").eq("is_archived", false);
+      const { count: cOrp } = await supabase.from("messages")
+        .select("id", { count: "exact", head: true }).is("prospect_id", null).eq("is_archived", false);
+      return { inbound: cIn || 0, outbound: cOut || 0, unattached: cOrp || 0 };
+    },
+  });
+
+  // Tous les prospects référencés dans les messages (en excluant les null)
   const prospectIds = useMemo(
-    () => Array.from(new Set(messages.map((m) => m.prospect_id))),
+    () => Array.from(new Set(messages.map((m) => m.prospect_id).filter((id): id is string => !!id))),
     [messages],
   );
 
@@ -157,7 +185,7 @@ function InboxPage() {
   );
 
   const enriched = useMemo<EnrichedMessage[]>(
-    () => messages.map((m) => ({ ...m, prospect: prospectMap.get(m.prospect_id) || null })),
+    () => messages.map((m) => ({ ...m, prospect: m.prospect_id ? prospectMap.get(m.prospect_id) || null : null })),
     [messages, prospectMap],
   );
 
@@ -339,6 +367,37 @@ function InboxPage() {
         </div>
       </div>
 
+      {/* Onglets boîte : Tous / Reçus / Envoyés / Non rattachés */}
+      <div className="flex flex-wrap gap-1.5 -mt-2">
+        {([
+          { key: "all", label: "Tous", count: null },
+          { key: "inbound", label: "Reçus", count: counts?.inbound },
+          { key: "outbound", label: "Envoyés", count: counts?.outbound },
+          { key: "unattached", label: "Non rattachés", count: counts?.unattached },
+        ] as const).map((f) => (
+          <button
+            key={f.key}
+            onClick={() => setBoxFilter(f.key as typeof boxFilter)}
+            className={cn(
+              "px-3 py-1.5 rounded-full text-xs font-medium transition border",
+              boxFilter === f.key
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-card text-muted-foreground border-border hover:bg-muted",
+            )}
+          >
+            {f.label}
+            {typeof f.count === "number" && f.count > 0 && (
+              <span className={cn(
+                "ml-1.5 px-1.5 py-0.5 rounded-full text-[10px]",
+                boxFilter === f.key ? "bg-primary-foreground/20" : "bg-muted",
+              )}>
+                {f.count}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
       {/* Layout 2 colonnes : liste + détail */}
       <div className="grid lg:grid-cols-[minmax(320px,420px)_1fr] gap-4 min-h-[60vh]">
         {/* Liste */}
@@ -412,9 +471,23 @@ function MessageRow({
 }) {
   const meta = CHANNEL_META[message.channel];
   const Icon = meta.icon;
-  const prospectName = message.prospect
+
+  // Affichage du destinataire/expéditeur :
+  //   - si rattaché à un prospect → nom complet du prospect
+  //   - sinon, si on a le sender_name/sender_email du Gmail header → utilise-le
+  //   - sinon fallback "Contact inconnu"
+  const displayName = message.prospect
     ? `${message.prospect.first_name} ${message.prospect.last_name}`
-    : "Prospect inconnu";
+    : message.sender_name && message.sender_name.length > 0
+      ? message.sender_name
+      : message.direction === "inbound"
+        ? message.sender_email || "Expéditeur inconnu"
+        : message.recipient_email || "Destinataire inconnu";
+
+  const subline = message.prospect?.company
+    || (message.prospect ? null : (message.direction === "inbound" ? message.sender_email : message.recipient_email));
+
+  const isOrphan = !message.prospect_id;
 
   return (
     <button
@@ -435,10 +508,15 @@ function MessageRow({
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
             <span className={cn(
-              "text-sm truncate",
+              "text-sm truncate flex items-center gap-1.5",
               !message.is_read ? "font-semibold text-foreground" : "font-medium text-foreground/90",
             )}>
-              {prospectName}
+              {displayName}
+              {isOrphan && (
+                <span className="text-[9px] px-1 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 font-medium uppercase tracking-wider">
+                  Non rattaché
+                </span>
+              )}
             </span>
             <span className="text-[10px] text-muted-foreground flex-shrink-0 flex items-center gap-1">
               {message.direction === "inbound" ? (
@@ -449,8 +527,8 @@ function MessageRow({
               {formatDistanceToNow(new Date(message.occurred_at), { addSuffix: true, locale: fr })}
             </span>
           </div>
-          {message.prospect?.company && (
-            <p className="text-[11px] text-muted-foreground truncate">{message.prospect.company}</p>
+          {subline && (
+            <p className="text-[11px] text-muted-foreground truncate">{subline}</p>
           )}
           {message.subject && (
             <p className="text-xs font-medium text-foreground/80 mt-1 truncate">{message.subject}</p>
