@@ -11,9 +11,11 @@
  * votre site." → effet wahou garanti.
  */
 
-import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { format, formatDistanceToNow } from "date-fns";
+import { fr } from "date-fns/locale";
 import {
   Dialog,
   DialogContent,
@@ -25,7 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, Loader2, ExternalLink, Copy, RefreshCw, Eye, Smartphone, QrCode } from "lucide-react";
+import { Sparkles, Loader2, ExternalLink, Copy, RefreshCw, Eye, Smartphone, QrCode, Check, Search, Palette, PenLine, Rocket, EyeOff, Activity } from "lucide-react";
 import { toast } from "sonner";
 
 type GenerateResult = {
@@ -51,6 +53,20 @@ const SECTOR_LABELS: Record<string, string> = {
   service: "✨ Service",
 };
 
+type GenerationStep = {
+  key: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+};
+
+const GENERATION_STEPS: GenerationStep[] = [
+  { key: "places", label: "Récupération des photos & avis Google", icon: Search },
+  { key: "sector", label: "Détection du secteur d'activité", icon: Palette },
+  { key: "copy", label: "Rédaction IA (Claude Sonnet 4.6)", icon: PenLine },
+  { key: "build", label: "Construction du site web", icon: Sparkles },
+  { key: "deploy", label: "Déploiement sur le cloud", icon: Rocket },
+];
+
 export function InstantPreviewDialog({
   prospectId,
   children,
@@ -61,9 +77,61 @@ export function InstantPreviewDialog({
   const [open, setOpen] = useState(false);
   const [result, setResult] = useState<GenerateResult | null>(null);
   const [view, setView] = useState<"desktop" | "mobile">("desktop");
+  // Index de l'étape en cours pendant la génération (progress UX)
+  const [stepIndex, setStepIndex] = useState(0);
+  const stepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Stats : observation des ouvertures du preview par le prospect
+  const stats = useQuery({
+    queryKey: ["preview-stats", prospectId, result?.preview_id],
+    enabled: !!result?.preview_id,
+    refetchInterval: 8000, // poll léger pour voir les ouvertures en temps réel
+    queryFn: async () => {
+      if (!result?.preview_id) return null;
+      const { data } = await (supabase as unknown as {
+        from: (t: string) => {
+          select: (s: string) => {
+            eq: (k: string, v: string) => {
+              maybeSingle: () => Promise<{ data: { opened_at: string | null; view_count: number } | null }>;
+            };
+          };
+        };
+      })
+        .from("prospect_previews")
+        .select("opened_at, view_count")
+        .eq("id", result.preview_id)
+        .maybeSingle();
+      return data;
+    },
+  });
+
+  // Avance la progress UX pendant la mutation (3s par étape — calé sur le temps réel)
+  useEffect(() => {
+    if (stepTimerRef.current) {
+      clearInterval(stepTimerRef.current);
+      stepTimerRef.current = null;
+    }
+    return () => {
+      if (stepTimerRef.current) clearInterval(stepTimerRef.current);
+    };
+  }, []);
+
+  const startStepProgress = () => {
+    setStepIndex(0);
+    if (stepTimerRef.current) clearInterval(stepTimerRef.current);
+    stepTimerRef.current = setInterval(() => {
+      setStepIndex((i) => (i < GENERATION_STEPS.length - 1 ? i + 1 : i));
+    }, 3000);
+  };
+  const stopStepProgress = () => {
+    if (stepTimerRef.current) clearInterval(stepTimerRef.current);
+    stepTimerRef.current = null;
+    setStepIndex(GENERATION_STEPS.length);
+  };
 
   const generate = useMutation({
     mutationFn: async (force_refresh = false) => {
+      startStepProgress();
       const { data, error } = await supabase.functions.invoke("generate-preview", {
         body: { prospect_id: prospectId, force_refresh },
       });
@@ -79,6 +147,7 @@ export function InstantPreviewDialog({
       return data as GenerateResult;
     },
     onSuccess: (data) => {
+      stopStepProgress();
       setResult(data);
       toast.success(data.cached ? "Aperçu chargé" : "Aperçu généré !", {
         description: data.cached
@@ -86,7 +155,10 @@ export function InstantPreviewDialog({
           : `Secteur : ${SECTOR_LABELS[data.sector] || data.sector}`,
       });
     },
-    onError: (e: Error) => toast.error("Échec génération", { description: e.message }),
+    onError: (e: Error) => {
+      stopStepProgress();
+      toast.error("Échec génération", { description: e.message });
+    },
   });
 
   const onOpenChange = (next: boolean) => {
@@ -127,24 +199,96 @@ export function InstantPreviewDialog({
         </DialogHeader>
 
         {generate.isPending && !result && (
-          <div className="py-16 text-center space-y-4">
-            <div className="relative inline-block">
-              <Loader2 className="h-14 w-14 text-amber-500 animate-spin" />
-              <Sparkles className="h-6 w-6 text-amber-600 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+          <div className="py-10 px-2 space-y-6">
+            <div className="text-center space-y-2">
+              <div className="relative inline-block">
+                <div className="absolute inset-0 rounded-full bg-amber-500/20 animate-ping" />
+                <div className="relative bg-gradient-to-br from-amber-500 to-orange-500 rounded-full p-4 shadow-lg shadow-amber-500/40">
+                  <Sparkles className="h-7 w-7 text-white" />
+                </div>
+              </div>
+              <p className="text-base font-semibold pt-2">Génération du site en cours…</p>
+              <p className="text-xs text-muted-foreground">~15 à 25 secondes</p>
             </div>
-            <p className="text-base font-semibold">Génération du site en cours…</p>
-            <div className="text-xs text-muted-foreground space-y-1 max-w-md mx-auto">
-              <p>📍 Récupération des données Google Places</p>
-              <p>🎨 Détection du secteur et choix du template</p>
-              <p>✍️ Rédaction IA du copy (titre, services, à propos)</p>
-              <p>🚀 Déploiement sur Supabase Storage</p>
-            </div>
-            <p className="text-[11px] text-muted-foreground italic mt-2">~15 secondes</p>
+
+            {/* Liste des étapes avec indicateur live */}
+            <ol className="max-w-md mx-auto space-y-2.5">
+              {GENERATION_STEPS.map((step, i) => {
+                const isDone = i < stepIndex;
+                const isActive = i === stepIndex;
+                const Icon = step.icon;
+                return (
+                  <li
+                    key={step.key}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-500 ${
+                      isActive
+                        ? "bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900"
+                        : isDone
+                          ? "opacity-50"
+                          : "opacity-30"
+                    }`}
+                  >
+                    <div
+                      className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center ${
+                        isDone
+                          ? "bg-emerald-500 text-white"
+                          : isActive
+                            ? "bg-amber-500 text-white"
+                            : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {isDone ? (
+                        <Check className="h-3.5 w-3.5" />
+                      ) : isActive ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Icon className="h-3.5 w-3.5" />
+                      )}
+                    </div>
+                    <span
+                      className={`text-sm ${isActive ? "font-medium text-foreground" : "text-muted-foreground"}`}
+                    >
+                      {step.label}
+                    </span>
+                  </li>
+                );
+              })}
+            </ol>
           </div>
         )}
 
         {result && previewUrl && (
           <div className="space-y-4">
+            {/* Stats live : ouverture & vues — apparait quand le prospect a vu */}
+            {stats.data && (stats.data.opened_at || stats.data.view_count > 0) ? (
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center">
+                  <Eye className="h-4 w-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">
+                    Le prospect a vu son aperçu {stats.data.view_count > 1 ? `${stats.data.view_count} fois` : ""}
+                  </p>
+                  {stats.data.opened_at && (
+                    <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                      Première ouverture {formatDistanceToNow(new Date(stats.data.opened_at), { addSuffix: true, locale: fr })}
+                    </p>
+                  )}
+                </div>
+                <Activity className="h-4 w-4 text-emerald-600 animate-pulse" />
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/40 border">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted text-muted-foreground flex items-center justify-center">
+                  <EyeOff className="h-4 w-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">Pas encore consulté</p>
+                  <p className="text-xs text-muted-foreground">Quand le prospect clique sur le lien, ça s'actualise ici en direct.</p>
+                </div>
+              </div>
+            )}
+
             {/* Top bar : URL + actions */}
             <div className="flex items-start gap-3 flex-wrap p-3 rounded-lg border bg-amber-50/40 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900">
               <div className="flex-1 min-w-0">

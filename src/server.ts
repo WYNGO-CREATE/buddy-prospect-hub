@@ -66,9 +66,70 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
   return brandedErrorResponse();
 }
 
+// ─── PREVIEW PROXY ─────────────────────────────────────────────────────
+// Route /p/<slug> : sert les Aperçus Instantanés depuis le Cloudflare Worker.
+//
+// Pourquoi pas direct depuis Supabase Storage ?
+//   Supabase force Content-Type: text/plain + nosniff + CSP sandbox sur les
+//   .html (protection XSS). Résultat : Safari affiche le code source au
+//   lieu de rendre la page.
+//
+// Pourquoi pas via une Supabase Edge Function ?
+//   Même problème : Supabase impose nosniff + CSP "default-src 'none'; sandbox"
+//   sur TOUTES les réponses des edge functions.
+//
+// Solution : Cloudflare Worker proxy. On fetch les bytes HTML depuis le
+// bucket public Storage (bytes corrects, juste le content-type est cassé)
+// et on les ressert avec les BONS headers (text/html + CSP raisonnable).
+//
+// URL des previews : https://<worker>.workers.dev/p/<slug>
+//                    (ou https://workspace.wyngo.fr/p/<slug> avec custom domain)
+const SUPABASE_PROJECT_ID = "mwkkgubvdswmdaiswepl";
+
+async function servePreview(slug: string): Promise<Response> {
+  // Nettoyage défensif : pas de slash, pas de traversée
+  const clean = slug.replace(/[^a-z0-9\-]/gi, "");
+  if (!clean) {
+    return new Response("Slug manquant", { status: 400 });
+  }
+  const storageUrl = `https://${SUPABASE_PROJECT_ID}.supabase.co/storage/v1/object/public/previews/${clean}.html`;
+  const upstream = await fetch(storageUrl);
+  if (!upstream.ok) {
+    return new Response(`Aperçu introuvable (${clean})`, {
+      status: 404,
+      headers: { "content-type": "text/plain; charset=utf-8" },
+    });
+  }
+  const html = await upstream.text();
+  return new Response(html, {
+    status: 200,
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "public, max-age=300, s-maxage=600",
+      "x-robots-tag": "noindex", // les previews ne doivent pas indexer
+      // CSP raisonnable : autorise Tailwind CDN + Google Fonts + photos HTTPS
+      "content-security-policy":
+        "default-src 'self' https: data:; " +
+        "img-src 'self' https: data: blob:; " +
+        "style-src 'self' https: 'unsafe-inline'; " +
+        "script-src 'self' https: 'unsafe-inline'; " +
+        "font-src 'self' https: data:; " +
+        "connect-src 'self' https:;",
+    },
+  });
+}
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
+      const url = new URL(request.url);
+
+      // Route preview proxy avant TanStack handler
+      if (url.pathname.startsWith("/p/")) {
+        const slug = url.pathname.slice(3);
+        return await servePreview(slug);
+      }
+
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
       return await normalizeCatastrophicSsrResponse(response);

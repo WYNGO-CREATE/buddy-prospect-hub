@@ -341,15 +341,63 @@ type BuildInput = {
   slug: string;
   preview_id: string;
   supabase_url: string;
+  app_url: string;
 };
 
 function buildHtml(input: BuildInput): string {
   const theme = SECTOR_THEME[input.sector];
-  const heroPhoto = input.photos[0] || `https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=2400&q=85`;
-  const galleryPhotos = input.photos.slice(1);
+  // Fallback photos par secteur (Unsplash haute qualité, libre d'usage)
+  const SECTOR_FALLBACK_PHOTOS: Record<Sector, string[]> = {
+    boulangerie: [
+      "https://images.unsplash.com/photo-1568254183919-78a4f43a2877?w=2400&q=85",
+      "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=1600&q=85",
+      "https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=1600&q=85",
+      "https://images.unsplash.com/photo-1549931319-a545dcf3bc73?w=1600&q=85",
+      "https://images.unsplash.com/photo-1486427944299-d1955d23e34d?w=1600&q=85",
+    ],
+    restaurant: [
+      "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=2400&q=85",
+      "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=1600&q=85",
+      "https://images.unsplash.com/photo-1559339352-11d035aa65de?w=1600&q=85",
+      "https://images.unsplash.com/photo-1551218808-94e220e084d2?w=1600&q=85",
+      "https://images.unsplash.com/photo-1466637574441-749b8f19452f?w=1600&q=85",
+    ],
+    coiffure: [
+      "https://images.unsplash.com/photo-1560066984-138dadb4c035?w=2400&q=85",
+      "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=1600&q=85",
+      "https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?w=1600&q=85",
+      "https://images.unsplash.com/photo-1503951914875-452162b0f3f1?w=1600&q=85",
+      "https://images.unsplash.com/photo-1487412947147-5cebf100ffc2?w=1600&q=85",
+    ],
+    commerce: [
+      "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=2400&q=85",
+      "https://images.unsplash.com/photo-1472851294608-062f824d29cc?w=1600&q=85",
+      "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=1600&q=85",
+      "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=1600&q=85",
+      "https://images.unsplash.com/photo-1545194445-dddb8f4487c6?w=1600&q=85",
+    ],
+    artisan: [
+      "https://images.unsplash.com/photo-1503387762-592deb58ef4e?w=2400&q=85",
+      "https://images.unsplash.com/photo-1581094288338-2314dddb7ece?w=1600&q=85",
+      "https://images.unsplash.com/photo-1572177812156-58036aae439c?w=1600&q=85",
+      "https://images.unsplash.com/photo-1581094271901-8022df4466f9?w=1600&q=85",
+      "https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=1600&q=85",
+    ],
+    service: [
+      "https://images.unsplash.com/photo-1497366216548-37526070297c?w=2400&q=85",
+      "https://images.unsplash.com/photo-1556761175-5973dc0f32e7?w=1600&q=85",
+      "https://images.unsplash.com/photo-1521737711867-e3b97375f902?w=1600&q=85",
+      "https://images.unsplash.com/photo-1551836022-d5d88e9218df?w=1600&q=85",
+      "https://images.unsplash.com/photo-1521737852567-6949f3f9f2b5?w=1600&q=85",
+    ],
+  };
+  // Si Google Places n'a rien fourni → utilise les photos de secours du secteur
+  const effectivePhotos = input.photos.length > 0 ? input.photos : SECTOR_FALLBACK_PHOTOS[input.sector];
+  const heroPhoto = effectivePhotos[0];
+  const galleryPhotos = effectivePhotos.slice(1);
   const company = escapeHtml(input.company);
-  // URL canonique = la même que ce que le commercial envoie (view-preview proxy)
-  const canonicalUrl = `${input.supabase_url}/functions/v1/view-preview/${input.slug}`;
+  // URL canonique = la même que ce que le commercial envoie (Worker proxy)
+  const canonicalUrl = `${input.app_url}/p/${input.slug}`;
   const ogImage = heroPhoto;
   const ogTitle = `${input.company} — ${input.copy.hero_title}`;
   const ogDescription = input.copy.hero_tagline;
@@ -385,7 +433,37 @@ function buildHtml(input: BuildInput): string {
   <meta name="twitter:description" content="${escapeHtml(ogDescription)}">
   <meta name="twitter:image" content="${ogImage}">
 
+  <link rel="canonical" href="${canonicalUrl}">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>${theme.emoji}</text></svg>">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2222%22 fill=%22${encodeURIComponent(theme.accent)}%22/><text y=%22.85em%22 x=%225%22 font-size=%2280%22>${theme.emoji}</text></svg>">
+  <meta name="theme-color" content="${theme.primary}">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="format-detection" content="telephone=yes">
+  <meta name="robots" content="noindex, nofollow"><!-- preview privé, pas pour Google -->
+
+  <!-- JSON-LD : LocalBusiness pour rich snippets si jamais le prospect partage -->
+  <script type="application/ld+json">${JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "LocalBusiness",
+    name: input.company,
+    description: input.copy.hero_tagline,
+    image: ogImage,
+    url: canonicalUrl,
+    ...(input.phone ? { telephone: input.phone } : {}),
+    ...(input.address ? { address: { "@type": "PostalAddress", streetAddress: input.address } } : {}),
+    ...(input.rating ? {
+      aggregateRating: {
+        "@type": "AggregateRating",
+        ratingValue: input.rating.toFixed(1),
+        reviewCount: input.review_count || input.reviews.length || 1,
+        bestRating: "5",
+      },
+    } : {}),
+    ...(input.hours.length > 0 ? {
+      openingHours: input.hours.filter(h => !/ferm/i.test(h)).join(", "),
+    } : {}),
+  })}</script>
 
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -948,6 +1026,7 @@ serve(async (req) => {
     // 4. Construction HTML
     const slug = makeSlug(company);
     const previewId = crypto.randomUUID();
+    const appUrl = Deno.env.get("WYNGO_APP_URL") || "https://wyngo.bold-unit-739e.workers.dev";
     const html = buildHtml({
       company,
       sector,
@@ -963,6 +1042,7 @@ serve(async (req) => {
       slug,
       preview_id: previewId,
       supabase_url: supabaseUrl,
+      app_url: appUrl,
     });
 
     // 5. Upload sur Storage (Blob → content-type correct)
@@ -979,10 +1059,13 @@ serve(async (req) => {
     if (upErr) throw new Error(`Storage upload : ${upErr.message}`);
 
     // ⚠️ On ne retourne PAS l'URL Storage directement : Supabase force
-    // Content-Type: text/plain sur les .html (protection XSS), donc le
-    // browser afficherait le code source. On passe par notre edge function
-    // `view-preview` qui sert avec le bon Content-Type: text/html.
-    const publicUrl = `${supabaseUrl}/functions/v1/view-preview/${slug}`;
+    // Content-Type: text/plain + nosniff + CSP sandbox sur tout HTML servi
+    // depuis Storage OU edge functions (protection XSS systémique).
+    //
+    // Solution : proxy via le Cloudflare Worker /p/<slug> qui fetch le HTML
+    // depuis Storage et le ressert avec les bons headers (text/html).
+    // L'URL est aussi plus courte et branded.
+    const publicUrl = `${appUrl}/p/${slug}`;
 
     // 6. Insertion DB
     const { data: row, error: insErr } = await serviceClient
