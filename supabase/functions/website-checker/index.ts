@@ -312,65 +312,183 @@ async function findResponsiveCandidate(urls: string[]): Promise<{ url: string; r
   return null;
 }
 
+/**
+ * Normalise un nom de société pour comparaison (lowercase, sans accents,
+ * sans suffixes SARL/SAS/etc., sans ponctuation).
+ */
+function normalizeCompany(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/\b(sarl|sas|sasu|eurl|sa|snc|scop|sci|ei|eirl|gie|ets|etablissements)\b/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Vérifie que la page HTML appartient bien à l'entreprise — son nom (ou un
+ * mot dominant) doit apparaître dans le title, h1 ou body. Indispensable
+ * quand on a deviné le domaine (sinon on attribue à tort le site d'un autre).
+ */
+function verifyCompanyMatch(html: string, companyName: string): { match: boolean; reason: string } {
+  const normalizedCompany = normalizeCompany(companyName);
+  if (!normalizedCompany) return { match: false, reason: "empty_name" };
+
+  const tokens = normalizedCompany.split(" ").filter((w) => w.length >= 4);
+  if (tokens.length === 0) return { match: false, reason: "no_tokens" };
+
+  // Extrait <title>, <h1>, et un échantillon de texte du body
+  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const h1Match = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+  const sample = [
+    titleMatch?.[1] || "",
+    h1Match?.[1] || "",
+    html.slice(0, 6000), // début du body suffisant
+  ].join(" ");
+  const haystack = normalizeCompany(sample.replace(/<[^>]+>/g, " "));
+
+  // Stratégie : au moins 1 token de 5+ chars OU 2 tokens de 4+ chars présents.
+  const longTokens = tokens.filter((t) => t.length >= 5);
+  const longHit = longTokens.find((t) => haystack.includes(t));
+  if (longHit) return { match: true, reason: `match_long_token:${longHit}` };
+
+  const shortHits = tokens.filter((t) => haystack.includes(t));
+  if (shortHits.length >= 2) return { match: true, reason: `match_2_tokens:${shortHits.slice(0, 2).join(",")}` };
+
+  // Match très partiel (1 seul token court) → on n'accepte pas
+  return { match: false, reason: shortHits.length === 1 ? `weak_single_short:${shortHits[0]}` : "no_match" };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
   try {
-    const { company_name, hint_url } = await req.json();
-    if (!company_name && !hint_url) {
-      return json({ error: "company_name ou hint_url requis" }, 400);
+    const {
+      company_name,
+      hint_url,           // Pappers : moyennement fiable
+      trusted_url,        // Google Places : très fiable (officiel)
+    } = await req.json() as { company_name?: string; hint_url?: string; trusted_url?: string };
+
+    if (!company_name && !hint_url && !trusted_url) {
+      return json({ error: "company_name, hint_url ou trusted_url requis" }, 400);
     }
 
-    // 1. Liste de candidats : hint en priorité, puis devine
-    const candidates: string[] = [];
-    if (hint_url) {
-      const u = hint_url.startsWith("http") ? hint_url : `https://${hint_url}`;
-      candidates.push(u);
-    }
-    if (company_name) candidates.push(...generateDomainCandidates(company_name));
+    const signals: string[] = [];
 
-    // 2. On tente de trouver une URL qui répond
-    const found = await findResponsiveCandidate(candidates);
-    if (!found) {
-      // Personne ne répond → CIBLE PRIME
-      return json({
-        status: "no_website" as Status,
-        url: null,
-        score: 0,
-        signals: ["no_candidates_responded"],
-      });
-    }
-
-    // 3. On tente aussi /contact pour récolter plus de signaux
-    let contactHtml: string | undefined;
-    try {
-      const origin = new URL(found.url).origin;
-      for (const path of ["/contact", "/contact.html", "/contactez-nous", "/nous-contacter"]) {
-        const r = await tryFetch(`${origin}${path}`);
-        if (r?.html && r.status < 400) {
-          contactHtml = r.html;
-          break;
-        }
+    // ═══ ÉTAPE 1 : sources fiables (Places > Pappers) ═══
+    // Le `trusted_url` vient de Google Places (le pro a renseigné l'URL
+    // officiellement à Google) → on lui fait confiance, on vérifie juste
+    // qu'il répond.
+    if (trusted_url) {
+      const url = trusted_url.startsWith("http") ? trusted_url : `https://${trusted_url}`;
+      const res = await tryFetch(url);
+      if (res?.html && res.status < 400) {
+        // On évalue quand même la qualité
+        const finalUrl = res.finalUrl || url;
+        let contactHtml: string | undefined;
+        try {
+          const origin = new URL(finalUrl).origin;
+          for (const path of ["/contact", "/contact.html", "/contactez-nous", "/nous-contacter"]) {
+            const r = await tryFetch(`${origin}${path}`);
+            if (r?.html && r.status < 400) { contactHtml = r.html; break; }
+          }
+        } catch {/* ignore */}
+        const evalResult = evaluateSite(finalUrl, res.html, res.headers, contactHtml);
+        return json({
+          status: scoreToStatus(evalResult.score),
+          url: finalUrl,
+          score: evalResult.score,
+          signals: ["source:places_trusted", ...evalResult.signals],
+          checked_contact_page: !!contactHtml,
+          source: "places",
+        });
       }
-    } catch {
-      /* ignore */
+      signals.push("places_url_unreachable");
     }
 
-    // 4. Évalue
-    const { score, signals } = evaluateSite(
-      found.url,
-      found.res.html!,
-      found.res.headers,
-      contactHtml,
-    );
+    // ═══ ÉTAPE 2 : Pappers hint_url ═══
+    // Pappers retourne parfois un site_web qui n'est PAS le site officiel
+    // (vieux site abandonné, site d'une autre entité du groupe…). On
+    // vérifie qu'il répond ET que le contenu mentionne bien l'entreprise.
+    if (hint_url && company_name) {
+      const url = hint_url.startsWith("http") ? hint_url : `https://${hint_url}`;
+      const res = await tryFetch(url);
+      if (res?.html && res.status < 400) {
+        const finalUrl = res.finalUrl || url;
+        const match = verifyCompanyMatch(res.html, company_name);
+        if (match.match) {
+          let contactHtml: string | undefined;
+          try {
+            const origin = new URL(finalUrl).origin;
+            for (const path of ["/contact", "/contact.html", "/contactez-nous", "/nous-contacter"]) {
+              const r = await tryFetch(`${origin}${path}`);
+              if (r?.html && r.status < 400) { contactHtml = r.html; break; }
+            }
+          } catch {/* ignore */}
+          const evalResult = evaluateSite(finalUrl, res.html, res.headers, contactHtml);
+          return json({
+            status: scoreToStatus(evalResult.score),
+            url: finalUrl,
+            score: evalResult.score,
+            signals: ["source:pappers_verified", match.reason, ...evalResult.signals],
+            checked_contact_page: !!contactHtml,
+            source: "pappers",
+          });
+        }
+        signals.push(`pappers_url_mismatch:${match.reason}`);
+      } else {
+        signals.push("pappers_url_unreachable");
+      }
+    }
 
+    // ═══ ÉTAPE 3 : domaines devinés (vérification STRICTE par nom) ═══
+    // Pour chaque candidat deviné, on exige que la page contienne le nom
+    // de l'entreprise. Sinon on considère qu'on s'est trompé de domaine et
+    // que l'entreprise n'a PAS de site → cible prime pour Wyngo.
+    if (company_name) {
+      const candidates = generateDomainCandidates(company_name);
+      for (const url of candidates) {
+        const res = await tryFetch(url);
+        if (!res || res.status >= 400 || !res.html) continue;
+
+        const match = verifyCompanyMatch(res.html, company_name);
+        if (!match.match) {
+          signals.push(`guess_rejected:${new URL(url).hostname}:${match.reason}`);
+          continue;
+        }
+
+        // Match validé !
+        const finalUrl = res.finalUrl || url;
+        let contactHtml: string | undefined;
+        try {
+          const origin = new URL(finalUrl).origin;
+          for (const path of ["/contact", "/contact.html", "/contactez-nous", "/nous-contacter"]) {
+            const r = await tryFetch(`${origin}${path}`);
+            if (r?.html && r.status < 400) { contactHtml = r.html; break; }
+          }
+        } catch {/* ignore */}
+        const evalResult = evaluateSite(finalUrl, res.html, res.headers, contactHtml);
+        return json({
+          status: scoreToStatus(evalResult.score),
+          url: finalUrl,
+          score: evalResult.score,
+          signals: ["source:guess_verified", match.reason, ...evalResult.signals],
+          checked_contact_page: !!contactHtml,
+          source: "guess",
+        });
+      }
+    }
+
+    // ═══ Aucun candidat valide → pas de site ═══
     return json({
-      status: scoreToStatus(score),
-      url: found.url,
-      score,
-      signals,
-      checked_contact_page: !!contactHtml,
+      status: "no_website" as Status,
+      url: null,
+      score: 0,
+      signals: signals.length > 0 ? signals : ["no_candidates"],
+      source: null,
     });
   } catch (e) {
     console.error("[website-checker]", e);

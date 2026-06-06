@@ -18,6 +18,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { TRADES, TRADE_CATEGORIES } from "@/lib/trades-catalog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -90,18 +91,8 @@ type EnrichedResult = PappersResult & {
 };
 
 // Codes NAF de TPE typiques pour Wyngo
-const NAF_PRESETS: Array<{ label: string; code: string }> = [
-  { label: "Boulangerie - Pâtisserie", code: "10.71B" },
-  { label: "Salon de coiffure", code: "96.02A" },
-  { label: "Conseil aux entreprises", code: "70.22Z" },
-  { label: "Expertise comptable", code: "69.20Z" },
-  { label: "Conseil juridique", code: "69.10Z" },
-  { label: "Restaurant", code: "56.10A" },
-  { label: "Plomberie", code: "43.22A" },
-  { label: "Électricité bâtiment", code: "43.21A" },
-  { label: "Architecture", code: "71.11Z" },
-  { label: "Photographie", code: "74.20Z" },
-];
+// NAF_PRESETS est maintenant généré depuis le catalogue centralisé
+// `src/lib/trades-catalog.ts` (60+ métiers organisés par catégorie).
 
 // Tranches d'effectif Pappers
 const EFFECTIF_PRESETS: Array<{ label: string; code: string }> = [
@@ -234,32 +225,28 @@ function ChassePage() {
       const entreprises = (data as { entreprises?: PappersResult[] }).entreprises || [];
       const total = (data as { pagination?: { total?: number } }).pagination?.total;
 
-      // Marque toutes comme "checking" puis on lance les checks en parallèle.
-      // On garde les SIREN déjà connus dans le state pour dédupliquer et
-      // PRÉSERVER l'historique (l'utilisateur veut naviguer entre prospects
-      // de plusieurs chasses sans tout perdre).
-      const existingSirens = new Set(results.map((r) => r.siren));
-      const newOnes: EnrichedResult[] = entreprises
-        .filter((e) => !existingSirens.has(e.siren))
-        .map((e) => ({
-          ...e,
-          website_status: "unknown" as WebsiteStatus,
-          website_score: 0,
-          website_url: e.site_web,
-          google_phone: null,
-          google_address: null,
-          google_rating: null,
-          scraped_email: null,
-          hunter_email: null,
-          checking: true,
-          enriching: true,
-        }));
-      const duplicates = entreprises.length - newOnes.length;
-      // Append: nouveaux d'abord, anciens à la suite pour visibilité
-      setResults((prev) => [...newOnes, ...prev]);
+      // ⚠️ Chaque nouvelle chasse REMPLACE les résultats précédents
+      // (UX feedback : l'utilisateur ne veut pas se retrouver avec un mix de
+      // boulangers + plombiers + coiffeurs à l'écran). Le SIREN reste utile
+      // uniquement pour exclure ceux DÉJÀ en CRM (via existingSiren depuis DB).
+      const newOnes: EnrichedResult[] = entreprises.map((e) => ({
+        ...e,
+        website_status: "unknown" as WebsiteStatus,
+        website_score: 0,
+        website_url: e.site_web,
+        google_phone: null,
+        google_address: null,
+        google_rating: null,
+        scraped_email: null,
+        hunter_email: null,
+        checking: true,
+        enriching: true,
+      }));
+      // Remplace tout
+      setResults(newOnes);
       if (newOnes.length === 0) {
         setChecking(false);
-        return { count: 0, total: total ?? 0, duplicates };
+        return { count: 0, total: total ?? 0, duplicates: 0 };
       }
       const enriched = newOnes;
 
@@ -275,24 +262,38 @@ function ChassePage() {
       //   3. scrape-email     → extrait l'email depuis le site (si on en a un)
       //   4. hunter-find      → fallback si scraping a rien donné
       async function enrichOne(item: EnrichedResult) {
-        // Étape 1+2 en parallèle (indépendants)
-        const [checkRes, placesRes] = await Promise.allSettled([
-          supabase.functions.invoke("website-checker", {
-            body: { company_name: item.nom, hint_url: item.site_web || undefined },
-          }),
-          supabase.functions.invoke("places-enrich", {
+        // Étape 1 : Google Places D'ABORD (source la plus fiable pour le
+        //   website officiel). On enchaîne ensuite avec website-checker en
+        //   lui passant le trusted_url depuis Places (s'il y en a un).
+        let placesData: any = null;
+        try {
+          const placesRes = await supabase.functions.invoke("places-enrich", {
             body: { name: item.nom, city: item.ville, code_postal: item.code_postal },
-          }),
-        ]);
-
-        const checkData = checkRes.status === "fulfilled" ? (checkRes.value.data as any) : null;
-        const placesData = placesRes.status === "fulfilled" ? (placesRes.value.data as any) : null;
+          });
+          placesData = placesRes.data;
+        } catch { /* on continue sans Places si ça échoue */ }
         const place = placesData?.place;
+
+        // Étape 2 : website-checker — on lui passe le trusted_url (Places)
+        //   pour qu'il vérifie en priorité ce site officiel, plutôt que de
+        //   deviner des domaines qui peuvent appartenir à d'autres entreprises.
+        let checkData: any = null;
+        try {
+          const checkRes = await supabase.functions.invoke("website-checker", {
+            body: {
+              company_name: item.nom,
+              trusted_url: place?.website || undefined,
+              hint_url: item.site_web || undefined,
+            },
+          });
+          checkData = checkRes.data;
+        } catch { /* on continue */ }
 
         const status: WebsiteStatus = checkData?.status || "unknown";
         const score: number = checkData?.score ?? 0;
-        // Le site officiel Google Maps est souvent plus fiable que celui devinéb
-        const url: string | null = checkData?.url || place?.website || item.site_web || null;
+        // L'URL retournée par website-checker est désormais validée
+        // (soit trusted Places, soit Pappers vérifié, soit guess vérifié).
+        const url: string | null = checkData?.url || null;
 
         // Étape 3 : scraping email si on a un site
         let scrapedEmail: string | null = null;
@@ -365,14 +366,12 @@ function ChassePage() {
       return {
         count: enriched.length,
         total: total ?? enriched.length,
-        duplicates,
       };
     },
     onSuccess: (res) => {
-      const parts = [`${res.count} ajoutées`];
-      if (res.duplicates) parts.push(`${res.duplicates} déjà présentes`);
-      parts.push(`sur ${res.total.toLocaleString("fr-FR")} disponibles`);
-      toast.success(parts.join(" — "));
+      toast.success(
+        `${res.count} prospects trouvés · sur ${res.total.toLocaleString("fr-FR")} disponibles dans Pappers`,
+      );
     },
     onError: (e: Error) => {
       setChecking(false);
@@ -560,7 +559,7 @@ function ChassePage() {
         <CardContent className="space-y-4">
           <div className="grid md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label htmlFor="naf">Activité (code NAF)</Label>
+              <Label htmlFor="naf">Activité (corps de métier)</Label>
               <div className="flex gap-2">
                 <select
                   id="naf"
@@ -568,10 +567,14 @@ function ChassePage() {
                   value={codeNaf}
                   onChange={(e) => setCodeNaf(e.target.value)}
                 >
-                  {NAF_PRESETS.map((p) => (
-                    <option key={p.code} value={p.code}>
-                      {p.label} ({p.code})
-                    </option>
+                  {TRADE_CATEGORIES.map((cat) => (
+                    <optgroup key={cat} label={cat}>
+                      {TRADES.filter((t) => t.category === cat).map((t) => (
+                        <option key={t.id} value={t.naf}>
+                          {t.label} ({t.naf})
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
                 <Input
@@ -579,8 +582,12 @@ function ChassePage() {
                   placeholder="ou 10.71B"
                   value={codeNaf}
                   onChange={(e) => setCodeNaf(e.target.value)}
+                  title="Code NAF custom (5 caractères)"
                 />
               </div>
+              <p className="text-[11px] text-muted-foreground">
+                {TRADES.length}+ corps de métier disponibles, groupés par catégorie.
+              </p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="effectif">Effectif</Label>

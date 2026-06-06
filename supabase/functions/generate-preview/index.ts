@@ -40,21 +40,46 @@ const corsHeaders = {
 
 type Sector = "boulangerie" | "restaurant" | "coiffure" | "commerce" | "artisan" | "service";
 
+/**
+ * Détection sector enrichie : matche d'abord les codes NAF connus (couverture
+ * 60+ métiers du catalogue), puis fallback sur mots-clés du nom/industrie.
+ * Si le brief contient un `trade_label` précis on le respecte en priorité.
+ */
 function detectSector(naf: string | null, company: string | null, industry: string | null): Sector {
   const text = `${naf || ""} ${company || ""} ${industry || ""}`.toLowerCase();
 
   if (naf) {
-    if (/^10\.71|^47\.24/.test(naf)) return "boulangerie";
-    if (/^56\.1|^56\.10|^56\.21|^56\.29/.test(naf)) return "restaurant";
-    if (/^96\.02|^96\.04/.test(naf)) return "coiffure";
-    if (/^47\./.test(naf)) return "commerce";
-    if (/^43\.|^45\.20|^41\./.test(naf)) return "artisan";
+    const n = naf.toUpperCase().trim();
+    // ── BOULANGERIE / PÂTISSERIE / CONFISERIE ──
+    if (/^10\.71|^10\.72|^10\.82|^47\.24/.test(n)) return "boulangerie";
+    // ── RESTAURATION ──
+    if (/^56\.1|^56\.21|^56\.29|^56\.30/.test(n)) return "restaurant";
+    // ── BEAUTÉ / COIFFURE / SPA ──
+    if (/^96\.02|^96\.04/.test(n)) return "coiffure";
+    // ── BÂTIMENT / ARTISANAT ──
+    if (/^43\.|^41\.|^45\.20|^25\.71|^81\.30/.test(n)) return "artisan";
+    // ── PHARMACIE → service (santé) ──
+    if (/^47\.73/.test(n)) return "service";
+    // ── COMMERCE DE DÉTAIL ──
+    if (/^47\.[2-7]/.test(n)) return "commerce";
+    // ── SANTÉ ──
+    if (/^86\.|^75\.00|^87\./.test(n)) return "service";
+    // ── SERVICES PRO ──
+    if (/^69\.|^70\.|^71\.|^72\.|^73\.|^74\.|^62\.|^63\./.test(n)) return "service";
+    // ── ENSEIGNEMENT / SPORT / LOISIRS ──
+    if (/^85\.|^93\./.test(n)) return "service";
+    // ── IMMOBILIER ──
+    if (/^68\./.test(n)) return "service";
+    // ── SERVICES PERSONNELS (pressing, cordonnerie, etc.) ──
+    if (/^96\.01|^95\.|^96\.03|^96\.09/.test(n)) return "service";
   }
-  if (/boulanger|patisserie|pâtisserie|pain|viennois/.test(text)) return "boulangerie";
-  if (/restaur|brasserie|bistrot|pizza|kebab|trattoria|crêperie|crêpe|food/.test(text)) return "restaurant";
-  if (/coiff|barbier|salon de beaut|esthéti|estheti|onglerie|spa|massage/.test(text)) return "coiffure";
-  if (/artisan|maçon|plomb|électric|electric|peintre|menuis|charpent|carrelage/.test(text)) return "artisan";
-  if (/magasin|boutique|épicerie|fleurist|librairie|caviste|fromag/.test(text)) return "commerce";
+
+  // Fallback mots-clés (étendu)
+  if (/boulanger|patisserie|pâtisserie|pain|viennois|chocolat|confiseur|confiserie/.test(text)) return "boulangerie";
+  if (/restaur|brasserie|bistrot|pizza|kebab|trattoria|crêperie|crêpe|food|traiteur|salon de th[éè]|bar\b|caf[éè]/.test(text)) return "restaurant";
+  if (/coiff|barbier|salon de beaut|esth[éè]ti|onglerie|spa\b|massage|tatoueur|perceur/.test(text)) return "coiffure";
+  if (/artisan|ma[çc]on|plomb|[ée]lectric|peintre|menuis|charpent|carrelage|carreleur|couvreur|isolat|paysag|jardinier|garagiste|carrossier|serrur|chauffagiste/.test(text)) return "artisan";
+  if (/magasin|boutique|[ée]picerie|fleurist|librairie|caviste|fromag|boucher|charcut|poissonner|primeur|opticien|bijout|maroquin|libraire|antiquaire/.test(text)) return "commerce";
   return "service";
 }
 
@@ -377,6 +402,120 @@ async function generateCopy(input: CopyPromptInput): Promise<{ copy: CopyOutput;
   }
 
   throw new Error("Aucune clé IA configurée (ANTHROPIC_API_KEY ou GEMINI_API_KEY)");
+}
+
+// ════════════════════════════════════════════════════════════════════
+// AUTO-ENRICHISSEMENT BRIEF — invoqué au début de generate-preview si
+// le brief est vide. Évite au commercial de devoir cliquer "Préremplir IA"
+// manuellement avant chaque génération.
+// ════════════════════════════════════════════════════════════════════
+
+const AUTO_OBJECTIVES = ["more_bookings", "online_sales", "showcase", "lead_generation", "reduce_calls"];
+const AUTO_TONES = ["warm", "elegant", "modern", "expert", "playful"];
+
+async function autoEnrichBrief(input: {
+  company: string;
+  naf?: string | null;
+  industry?: string | null;
+  location?: string | null;
+  city?: string | null;
+  phone?: string | null;
+  website?: string | null;
+  rating?: number | null;
+  reviewsExcerpt?: string;
+}): Promise<{ activity: string; objective: string; tone: string; keywords: string[] }> {
+  const prompt = `Tu analyses une entreprise française de proximité pour préparer un brief de génération de site web vitrine.
+
+═══ DONNÉES ENTREPRISE ═══
+Société           : ${input.company}
+${input.naf ? `Code NAF          : ${input.naf}` : ""}
+${input.industry ? `Libellé activité  : ${input.industry}` : ""}
+${input.location ? `Localisation      : ${input.location}` : ""}
+${input.city ? `Ville             : ${input.city}` : ""}
+${input.phone ? `Téléphone         : ${input.phone}` : ""}
+${input.website ? `Site existant     : ${input.website}` : "Site existant     : aucun"}
+${input.rating ? `Note Google       : ${input.rating}/5` : ""}
+${input.reviewsExcerpt ? `\nAvis Google récents :\n${input.reviewsExcerpt}` : ""}
+
+═══ TÂCHE ═══
+Réponds en JSON STRICT avec :
+{
+  "activity": "Description précise (1-2 phrases) de ce qu'ils vendent/font au quotidien. SPÉCIFIQUE, pas paraphrase du NAF.",
+  "objective": "ID parmi : ${AUTO_OBJECTIVES.map(o => `'${o}'`).join(", ")} (objectif business prioritaire le plus probable)",
+  "tone": "ID parmi : ${AUTO_TONES.map(t => `'${t}'`).join(", ")} (ton qui colle au secteur)",
+  "keywords": ["3-6 produits phares / spécialités / mots-clés concrets du métier"]
+}
+
+Règles :
+1. activity : CIBLE la spécificité, pas "boulangerie" mais "boulangerie spécialisée pain au levain bio et viennoiseries pur beurre".
+2. keywords : que des termes du MÉTIER (produits/services réels).
+3. tone : warm pour artisan-bouche/familial, elegant pour beauté/gastronomie, modern pour commerce/agences, expert pour pros/santé, playful pour sport/loisir.
+4. objective : Resto/coiffeur → more_bookings. Boutique → showcase ou online_sales. Artisan → lead_generation. Pro/conseil → showcase.
+
+Réponds UNIQUEMENT avec le JSON.`;
+
+  const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
+  if (anthropicKey) {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": anthropicKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 600,
+        temperature: 0.5,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+    if (!res.ok) throw new Error(`Claude (enrich) ${res.status}`);
+    const d = await res.json();
+    const text = d.content?.[0]?.text || "";
+    const m = text.match(/\{[\s\S]*\}/);
+    if (!m) throw new Error("Pas de JSON dans la réponse Claude (enrich)");
+    return sanitizeBrief(JSON.parse(m[0]));
+  }
+
+  const geminiKey = Deno.env.get("GEMINI_API_KEY");
+  if (geminiKey) {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.4, response_mime_type: "application/json" },
+        }),
+      }
+    );
+    if (!res.ok) throw new Error(`Gemini (enrich) ${res.status}`);
+    const d = await res.json();
+    const text = d.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const m = text.match(/\{[\s\S]*\}/);
+    if (!m) throw new Error("Pas de JSON dans la réponse Gemini (enrich)");
+    return sanitizeBrief(JSON.parse(m[0]));
+  }
+
+  throw new Error("Aucune clé IA pour l'auto-enrichissement");
+}
+
+function sanitizeBrief(raw: { activity?: unknown; objective?: unknown; tone?: unknown; keywords?: unknown }): {
+  activity: string; objective: string; tone: string; keywords: string[];
+} {
+  return {
+    activity: typeof raw.activity === "string" ? raw.activity.trim().slice(0, 600) : "",
+    objective: AUTO_OBJECTIVES.includes(String(raw.objective)) ? String(raw.objective) : "showcase",
+    tone: AUTO_TONES.includes(String(raw.tone)) ? String(raw.tone) : "warm",
+    keywords: Array.isArray(raw.keywords)
+      ? raw.keywords
+          .filter((k): k is string => typeof k === "string" && k.trim().length > 0)
+          .map((k) => k.trim())
+          .slice(0, 8)
+      : [],
+  };
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -1066,29 +1205,69 @@ serve(async (req) => {
     // 1. Google Places (photos + reviews + horaires)
     const places = await fetchPlacesData(company, prospect.location);
 
-    // 2. Génération du copy IA — l'IA détermine elle-même le sector d'après
-    //    le brief + les données + les avis, ce qui est beaucoup plus fiable
-    //    que la détection regex sur le NAF (qui se trompe sur les artisans
-    //    avec NAF générique).
-    //    On donne TOUS les avis complets (pas juste 150 chars) pour que
-    //    Claude puisse vraiment capter les thèmes qui reviennent.
     const reviewsExcerpt = places.reviews
       .slice(0, 5)
       .map((r) => `- (${r.rating}★ par ${r.author}) "${r.text.slice(0, 400)}"`)
       .join("\n");
 
+    // 2. AUTO-ENRICHISSEMENT BRIEF — si le brief n'a pas été rempli par le
+    //    commercial, on le génère automatiquement par IA AVANT de générer
+    //    le copy. Le commercial peut éditer après pour affiner.
+    //    Persistance en DB pour que les générations suivantes soient
+    //    instantanées et que le commercial voie le brief sur la fiche.
+    let briefActivity = prospect.brief_activity;
+    let briefObjective = prospect.brief_objective;
+    let briefTone = prospect.brief_tone;
+    let briefKeywords: string[] | null = prospect.brief_keywords;
+
+    const briefIsEmpty = !briefActivity || briefActivity.trim().length < 10;
+    if (briefIsEmpty) {
+      try {
+        const enriched = await autoEnrichBrief({
+          company,
+          naf: prospect.naf,
+          industry: prospect.industry,
+          location: prospect.location,
+          city,
+          phone: prospect.phone,
+          website: prospect.website,
+          rating: places.rating,
+          reviewsExcerpt,
+        });
+        briefActivity = enriched.activity || briefActivity;
+        briefObjective = enriched.objective || briefObjective;
+        briefTone = enriched.tone || briefTone;
+        briefKeywords = (enriched.keywords && enriched.keywords.length > 0) ? enriched.keywords : briefKeywords;
+
+        // Persistance asynchrone (best-effort, on bloque pas la génération)
+        const sk = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+        if (sk) {
+          const sb = createClient(supabaseUrl, sk);
+          sb.from("prospects").update({
+            brief_activity: briefActivity,
+            brief_objective: briefObjective,
+            brief_tone: briefTone,
+            brief_keywords: briefKeywords,
+            brief_enriched_at: new Date().toISOString(),
+          }).eq("id", prospect_id).then(() => {}, (e) => console.error("persist brief:", e));
+        }
+      } catch (e) {
+        console.error("auto-enrich brief failed (non bloquant):", e);
+        // On continue sans brief si l'enrichissement échoue
+      }
+    }
+
+    // 3. Génération du copy IA — avec brief auto-enrichi ou existant
     const { copy: rawCopy, model } = await generateCopy({
       company,
       city,
       rating: places.rating,
       reviewCount: places.reviewCount,
       reviewsExcerpt,
-      // Brief commercial (peut être vide → l'IA se débrouille avec les données)
-      brief_activity: prospect.brief_activity,
-      brief_objective: prospect.brief_objective,
-      brief_tone: prospect.brief_tone,
-      brief_keywords: prospect.brief_keywords,
-      // Données entreprise additionnelles
+      brief_activity: briefActivity,
+      brief_objective: briefObjective,
+      brief_tone: briefTone,
+      brief_keywords: briefKeywords,
       naf: prospect.naf,
       industry: prospect.industry,
       website: prospect.website,
