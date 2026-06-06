@@ -277,9 +277,19 @@ Tu produis un copy ULTRA-PERSONNALISÉ qui :
   ✓ Si la ville est connue, mentionne-la au moins 1 fois
   ✓ Cohérence : si l'objectif est more_bookings → CTA "Réserver", "Prendre RDV". online_sales → "Commander", "Voir la boutique". lead_generation → "Demander un devis"
 
+═══ CHAMP "sector" — VALEUR LITTÉRALE OBLIGATOIRE ═══
+Tu DOIS répondre avec EXACTEMENT l'un de ces 6 strings, en lowercase, sans guillemets internes, sans qualifier :
+  → "boulangerie"  (pas "boulangerie artisanale", pas "boulangerie-pâtisserie")
+  → "restaurant"   (pas "restaurant gastronomique", pas "bistrot")
+  → "coiffure"     (pas "salon de coiffure", pas "barbier")
+  → "commerce"     (pas "fleuriste", pas "boutique")
+  → "artisan"      (pas "plombier", pas "électricien")
+  → "service"      (pas "comptable", pas "consultant")
+Tout autre valeur déclenche un REJET et une regénération.
+
 ═══ STRUCTURE JSON STRICTE ═══
 {
-  "sector": "boulangerie" | "restaurant" | "coiffure" | "commerce" | "artisan" | "service",
+  "sector": "boulangerie",   // ← EXACTEMENT l'une des 6 valeurs ci-dessus, rien d'autre
   "hero_title": "Titre h1 (3-6 mots, évocateur, ancré dans l'activité réelle)",
   "hero_tagline": "Sous-titre (14-24 mots, valeur précise + ville)",
   "signature_phrase": "Phrase signature courte (8-16 mots, presque une citation, leur philosophie)",
@@ -1084,12 +1094,18 @@ serve(async (req) => {
       website: prospect.website,
     });
 
-    // Sanitization du sector retourné par l'IA (sécurité — au cas où elle
-    // renvoie un truc inattendu, on fallback sur detectSector classique)
+    // Sanitization du sector retourné par l'IA — défense en profondeur :
+    // 1. valeur exacte ? on prend
+    // 2. valeur qualifiée (ex: "boulangerie artisanale") ? on prend le 1er mot s'il match
+    // 3. sinon fallback regex NAF + mots-clés
     const validSectors: Sector[] = ["boulangerie", "restaurant", "coiffure", "commerce", "artisan", "service"];
-    const sector: Sector = validSectors.includes(rawCopy.sector)
-      ? rawCopy.sector
-      : detectSector(prospect.naf || null, company, prospect.industry || null);
+    const rawSectorStr = String(rawCopy.sector || "").toLowerCase().trim();
+    const firstWord = rawSectorStr.split(/[\s\-_,/]/).filter(Boolean)[0] as Sector | undefined;
+    const sector: Sector = validSectors.includes(rawSectorStr as Sector)
+      ? (rawSectorStr as Sector)
+      : (firstWord && validSectors.includes(firstWord))
+        ? firstWord
+        : detectSector(prospect.naf || null, company, prospect.industry || null);
     const theme = SECTOR_THEME[sector];
     const copy = rawCopy;
 
