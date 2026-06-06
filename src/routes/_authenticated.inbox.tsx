@@ -47,6 +47,7 @@ import {
   ExternalLink,
   Send,
   RefreshCw,
+  Unplug,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -265,19 +266,47 @@ function InboxPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {gmailAccount && (
+            <>
             <Button
               variant="outline"
               size="sm"
               onClick={async () => {
                 setSyncing(true);
-                const { error } = await supabase.functions.invoke("gmail-sync");
+                const { data, error } = await supabase.functions.invoke("gmail-sync");
                 setSyncing(false);
-                if (error) toast.error("Sync échouée");
-                else toast.success("Synchronisé");
+                // Affichage détaillé pour debug : on remonte CE QUI a vraiment failed
+                if (error) {
+                  // Parse l'erreur de l'edge function (souvent dans context.json())
+                  let detail = error.message;
+                  try {
+                    const ctx = await (error as { context?: { json?: () => Promise<unknown> } }).context?.json?.();
+                    if ((ctx as { error?: string })?.error) detail = (ctx as { error: string }).error;
+                  } catch {/* noop */}
+                  toast.error("Sync échouée", { description: detail });
+                } else {
+                  const result = (data as { results?: Array<{ imported?: number; skipped?: number; processed?: number; error?: string }> })?.results?.[0];
+                  if (result?.error) {
+                    // Scope insuffisant ? On suggère reconnexion
+                    const scopeIssue = /scope|insufficient|403|forbidden/i.test(result.error);
+                    toast.error("Sync échouée", {
+                      description: scopeIssue
+                        ? "Permission lecture Gmail manquante. Clique 'Reconnecter Gmail' pour ré-autoriser."
+                        : result.error.slice(0, 200),
+                    });
+                  } else {
+                    const imp = result?.imported ?? 0;
+                    const proc = result?.processed ?? 0;
+                    toast.success(
+                      imp > 0 ? `${imp} email${imp > 1 ? "s" : ""} importé${imp > 1 ? "s" : ""}` : "Synchronisé · aucun nouveau",
+                      { description: proc > 0 ? `${proc} message${proc > 1 ? "s" : ""} traité${proc > 1 ? "s" : ""}` : undefined },
+                    );
+                  }
+                }
                 qc.invalidateQueries({ queryKey: ["inbox-messages"] });
                 qc.invalidateQueries({ queryKey: ["inbox-unread"] });
+                qc.invalidateQueries({ queryKey: ["inbox-counts"] });
                 qc.invalidateQueries({ queryKey: ["my-gmail-account"] });
               }}
               disabled={syncing}
@@ -285,6 +314,39 @@ function InboxPage() {
               <RefreshCw className={`h-4 w-4 mr-1.5 ${syncing ? "animate-spin" : ""}`} />
               {syncing ? "Sync…" : "Synchroniser Gmail"}
             </Button>
+            {/* Si le scope readonly manque dans le token actuel, on permet la
+                reconnexion qui re-déclenche le consent OAuth avec tous les scopes. */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const clientId = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID;
+                if (!clientId) {
+                  toast.error("VITE_GOOGLE_OAUTH_CLIENT_ID manquant");
+                  return;
+                }
+                const redirect_uri = `${window.location.origin}/auth/gmail-callback`;
+                const params = new URLSearchParams({
+                  client_id: clientId,
+                  redirect_uri,
+                  response_type: "code",
+                  scope: [
+                    "https://www.googleapis.com/auth/gmail.readonly",
+                    "https://www.googleapis.com/auth/gmail.send",
+                    "https://www.googleapis.com/auth/userinfo.email",
+                  ].join(" "),
+                  access_type: "offline",
+                  prompt: "consent",
+                  state: "gmail_oauth",
+                });
+                window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+              }}
+              title="Re-autoriser Gmail (utile si la lecture des emails reçus échoue)"
+            >
+              <Unplug className="h-4 w-4 mr-1.5" />
+              Reconnecter Gmail
+            </Button>
+            </>
           )}
           <ComposeDialog
             open={composeOpen}
