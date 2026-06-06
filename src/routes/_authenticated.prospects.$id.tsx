@@ -17,6 +17,8 @@ import { CallModeDrawer } from "@/components/call-mode-drawer";
 import { PitchGeneratorDialog } from "@/components/pitch-generator-dialog";
 import { InstantPreviewDialog } from "@/components/instant-preview-dialog";
 import { PreviewBriefCard } from "@/components/preview-brief-card";
+import { findTradeByNaf } from "@/lib/trades-catalog";
+import { Briefcase } from "lucide-react";
 import { PROSPECT_STATUSES, STATUS_LABELS, STATUS_VARIANTS, EVENT_LABELS, type ProspectStatus } from "@/lib/crm";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -527,6 +529,36 @@ function ProspectDetail() {
                 </dd>
               </div>
               <div><dt className="text-muted-foreground">Source</dt><dd>{prospect.source || "—"}</dd></div>
+              {/* ⚡ Métier : on affiche l'activité précise (brief IA) si renseignée,
+                  sinon le label du catalogue de métiers via le code NAF, sinon
+                  le libellé brut Pappers. */}
+              <div className="col-span-2">
+                <dt className="text-muted-foreground flex items-center gap-1.5">
+                  <Briefcase className="h-3 w-3" /> Métier
+                </dt>
+                <dd className="mt-0.5">
+                  {(() => {
+                    const briefActivity = (prospect as { brief_activity?: string | null }).brief_activity;
+                    const trade = findTradeByNaf((prospect as { naf?: string | null }).naf);
+                    if (briefActivity && briefActivity.trim().length > 0) {
+                      return (
+                        <div className="space-y-1">
+                          {trade?.label && (
+                            <span className="inline-block text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-primary/10 text-primary mr-1.5">
+                              {trade.label}
+                            </span>
+                          )}
+                          <p className="text-sm leading-relaxed">{briefActivity}</p>
+                        </div>
+                      );
+                    }
+                    if (trade?.label) {
+                      return <span>{trade.label}</span>;
+                    }
+                    return <span>{(prospect as { industry?: string | null }).industry || "—"}</span>;
+                  })()}
+                </dd>
+              </div>
               <div className="col-span-2">
                 <dt className="text-muted-foreground">Étiquettes</dt>
                 <dd className="flex flex-wrap gap-1 mt-1">
