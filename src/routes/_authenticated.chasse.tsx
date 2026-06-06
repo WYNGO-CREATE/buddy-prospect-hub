@@ -143,6 +143,8 @@ function ChassePage() {
   const [codeNaf, setCodeNaf] = useState("70.22Z");
   const [ville, setVille] = useState("");
   const [codePostal, setCodePostal] = useState("");
+  // Toggle pour afficher le champ "code NAF custom" (caché par défaut pour UX épurée)
+  const [showCustomNaf, setShowCustomNaf] = useState(false);
   const [effectif, setEffectif] = useState("01");
 
   // Results — persistés dans localStorage pour ne pas perdre l'historique
@@ -560,34 +562,41 @@ function ChassePage() {
           <div className="grid md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="naf">Activité (corps de métier)</Label>
-              <div className="flex gap-2">
-                <select
-                  id="naf"
-                  className="flex-1 text-sm border rounded-md px-2 py-2 bg-background"
-                  value={codeNaf}
-                  onChange={(e) => setCodeNaf(e.target.value)}
+              <select
+                id="naf"
+                className="w-full text-sm border rounded-md px-2 py-2 bg-background"
+                value={codeNaf}
+                onChange={(e) => setCodeNaf(e.target.value)}
+              >
+                {TRADE_CATEGORIES.map((cat) => (
+                  <optgroup key={cat} label={cat}>
+                    {TRADES.filter((t) => t.category === cat).map((t) => (
+                      <option key={t.id} value={t.naf}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                <span>{TRADES.length} corps de métier groupés par catégorie</span>
+                <button
+                  type="button"
+                  onClick={() => setShowCustomNaf((s) => !s)}
+                  className="text-primary hover:underline"
                 >
-                  {TRADE_CATEGORIES.map((cat) => (
-                    <optgroup key={cat} label={cat}>
-                      {TRADES.filter((t) => t.category === cat).map((t) => (
-                        <option key={t.id} value={t.naf}>
-                          {t.label} ({t.naf})
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
+                  {showCustomNaf ? "Masquer" : "Saisir un code NAF custom →"}
+                </button>
+              </div>
+              {showCustomNaf && (
                 <Input
-                  className="w-28"
-                  placeholder="ou 10.71B"
+                  className="text-sm"
+                  placeholder="ex: 10.71B"
                   value={codeNaf}
                   onChange={(e) => setCodeNaf(e.target.value)}
-                  title="Code NAF custom (5 caractères)"
+                  title="Code NAF à 5 caractères (ex: 10.71B)"
                 />
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                {TRADES.length}+ corps de métier disponibles, groupés par catégorie.
-              </p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="effectif">Effectif</Label>
