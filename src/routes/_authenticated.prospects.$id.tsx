@@ -35,6 +35,8 @@ function ProspectDetail() {
   const qc = useQueryClient();
   const { user, role } = useAuth();
   const [editing, setEditing] = useState(false);
+  // Onglet actif sur la section Activité (contrôlé pour la nav rapide depuis le haut de page)
+  const [activeTab, setActiveTab] = useState<"comments" | "calls" | "followups" | "history">("comments");
   const [callOpen, setCallOpen] = useState(false);
   const [followOpen, setFollowOpen] = useState(false);
   const [comment, setComment] = useState("");
@@ -448,6 +450,59 @@ function ProspectDetail() {
         </CardContent>
       </Card>
 
+      {/* ═══ NAV RAPIDE Activité ═══
+          Raccourcis vers les 4 onglets en bas (Discussion / Appels / Relances /
+          Historique). Au clic : active l'onglet ET scroll smooth vers la section.
+          Évite au commercial de scroller toute la page pour trouver l'activité. */}
+      <div className="rounded-xl border bg-gradient-to-r from-primary/5 to-transparent p-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+            Activité du prospect — accès rapide
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {([
+              { key: "comments", label: "Discussion", icon: MessageSquare, count: comments?.length || 0, tone: "emerald" },
+              { key: "calls", label: "Appels", icon: PhoneCall, count: calls?.length || 0, tone: "sky" },
+              { key: "followups", label: "Relances", icon: CalendarClock, count: followUps?.length || 0, tone: "amber" },
+              { key: "history", label: "Historique", icon: History, count: events?.length || 0, tone: "violet" },
+            ] as const).map((nav) => {
+              const Icon = nav.icon;
+              return (
+                <button
+                  key={nav.key}
+                  type="button"
+                  onClick={() => {
+                    setActiveTab(nav.key as typeof activeTab);
+                    setTimeout(() => {
+                      document.getElementById("prospect-activity")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }, 50);
+                  }}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition border",
+                    activeTab === nav.key
+                      ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                      : "bg-card hover:bg-muted border-border text-foreground",
+                  )}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {nav.label}
+                  {nav.count > 0 && (
+                    <span className={cn(
+                      "text-[10px] px-1.5 py-0.5 rounded-full font-bold",
+                      activeTab === nav.key
+                        ? "bg-primary-foreground/20"
+                        : "bg-muted text-foreground",
+                    )}>
+                      {nav.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Coordonnées</CardTitle>
@@ -605,13 +660,63 @@ function ProspectDetail() {
         }}
       />
 
-      <Tabs defaultValue="comments">
-        <TabsList>
-          <TabsTrigger value="comments"><MessageSquare className="h-4 w-4 mr-2" />Discussion</TabsTrigger>
-          <TabsTrigger value="calls"><PhoneCall className="h-4 w-4 mr-2" />Appels</TabsTrigger>
-          <TabsTrigger value="followups"><CalendarClock className="h-4 w-4 mr-2" />Relances</TabsTrigger>
-          <TabsTrigger value="history"><History className="h-4 w-4 mr-2" />Historique</TabsTrigger>
-        </TabsList>
+      {/* ═══ ONGLETS PROEMINENT — Discussion, Appels, Relances, Historique ═══
+          Ces 4 sections sont les hubs d'activité quotidienne sur un prospect.
+          On les rend visuellement très visibles (gros pills, compteurs, couleurs)
+          pour que le commercial trouve les actions du jour en un coup d'œil. */}
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} id="prospect-activity">
+        <div className="rounded-xl border bg-card p-2 mb-4">
+          <TabsList className="w-full grid grid-cols-2 md:grid-cols-4 h-auto p-1 bg-muted/40 gap-1">
+            <TabsTrigger
+              value="comments"
+              className="flex items-center justify-center gap-2 py-2.5 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+            >
+              <MessageSquare className="h-4 w-4 text-emerald-600" />
+              <span className="font-semibold">Discussion</span>
+              {(comments?.length || 0) > 0 && (
+                <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-bold">
+                  {comments?.length}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger
+              value="calls"
+              className="flex items-center justify-center gap-2 py-2.5 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+            >
+              <PhoneCall className="h-4 w-4 text-sky-600" />
+              <span className="font-semibold">Appels</span>
+              {(calls?.length || 0) > 0 && (
+                <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-sky-100 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 font-bold">
+                  {calls?.length}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger
+              value="followups"
+              className="flex items-center justify-center gap-2 py-2.5 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+            >
+              <CalendarClock className="h-4 w-4 text-amber-600" />
+              <span className="font-semibold">Relances</span>
+              {(followUps?.length || 0) > 0 && (
+                <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 font-bold">
+                  {followUps?.length}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger
+              value="history"
+              className="flex items-center justify-center gap-2 py-2.5 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+            >
+              <History className="h-4 w-4 text-violet-600" />
+              <span className="font-semibold">Historique</span>
+              {(events?.length || 0) > 0 && (
+                <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 font-bold">
+                  {events?.length}
+                </span>
+              )}
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="comments" className="mt-4">
           <Card>
