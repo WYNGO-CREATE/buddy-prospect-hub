@@ -11,7 +11,6 @@
  *  4. ⚠️  Prospects en retard         → jamais appelés ou silence > 14j
  *  5. 💼 Intéressés sans suite > 5j  → relance urgente avant qu'ils refroidissent
  *  6. 📭 Aperçus envoyés non ouverts → le prospect a ignoré, à requalifier
- *  7. ❄️  Refus anciens à requalifier→ "pas intéressé" depuis 90j+, tentative
  *
  * Toutes les queries tournent en parallèle (Promise.all) pour rapidité.
  * Auto-refresh toutes les 60s pour capter les nouvelles ouvertures live.
@@ -26,7 +25,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  Flame, MessageCircle, CalendarClock, AlertTriangle, Briefcase, EyeOff, Snowflake,
+  Flame, MessageCircle, CalendarClock, AlertTriangle, Briefcase, EyeOff,
   Check, ArrowRight, Phone, Mail, ChevronRight, ExternalLink,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
@@ -44,19 +43,34 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const now = () => new Date();
 const isoMinusDays = (d: number) => new Date(Date.now() - d * DAY_MS).toISOString();
 
-/** Classification simple par keyword d'un message inbound (positif/négatif/neutre) */
+/** Classification keyword des échanges entrants — emails, SMS, notes d'appel.
+ *  Détecte les signaux d'achat (positive) ou de refus (negative) en français
+ *  courant, y compris dans le langage parlé typique des notes d'appels. */
 function classifyReply(text: string): "positive" | "negative" | "neutral" {
   const t = text.toLowerCase();
-  // Négatif (refus net)
-  if (/\b(pas intéress|pas pour moi|non merci|trop cher|plus tard|déjà un site|déjà servi|ne souhaite|désinscri|stop)/i.test(t)) {
+  // ── Négatif (refus net, même dans notes d'appel "il a dit que...")
+  if (
+    /\b(pas intéress|pas pour moi|non merci|non,?\s*pas|trop cher|trop ch[èe]re|hors budget|pas le budget|plus tard|déjà un site|déjà servi|déjà fait|déjà équipé|ne souhaite|ne veux pas|refus|décliné|décline|désinscri|stop)\b/i.test(t)
+  ) {
     return "negative";
   }
-  // Positif (signal d'achat)
-  if (/\b(intéress|d'accord|rappele|rdv|disponib|envoyez|devis|tarif|combien|prix|quand peut)/i.test(t)) {
+  // ── Positif (signal d'achat clair)
+  if (
+    /\b(intéress|partant|d'accord|ok pour|rappele|rappel.{0,20}(demain|lundi|mardi|mercredi|jeudi|vendredi|semaine)|rdv|rendez-vous|disponib|envoyez|envoyer.{0,20}devis|devis|tarif|combien|quel.{0,5}prix|prix|quand peut|quand est-ce que|on signe|c'est bon|allez-y|go|valid[ée])\b/i.test(t)
+  ) {
     return "positive";
   }
   return "neutral";
 }
+
+const CHANNEL_LABEL: Record<string, { label: string; icon: string }> = {
+  email: { label: "Email", icon: "📧" },
+  linkedin: { label: "LinkedIn", icon: "💼" },
+  whatsapp: { label: "WhatsApp", icon: "💬" },
+  sms: { label: "SMS", icon: "📱" },
+  call: { label: "Appel", icon: "📞" },
+  note: { label: "Note", icon: "📝" },
+};
 
 type Prospect = {
   id: string;
@@ -98,24 +112,74 @@ function CockpitPage() {
     },
   });
 
-  // ─── Q2 : Réponses reçues non lues < 7j ────────────────────────────
+  // ─── Q2 : Échanges entrants récents (TOUS CANAUX) < 7j ─────────────
+  //   Inclut : emails reçus, LinkedIn DM, WhatsApp, SMS, notes d'appels
+  //   manuelles. Source unifiée = messages (inbound) + call_logs.notes
   const { data: incomingReplies } = useQuery({
     queryKey: ["cockpit-replies", user?.id],
     enabled: !!user,
     refetchInterval: 60_000,
     queryFn: async () => {
-      const { data } = await supabase
+      // a) Messages entrants tous canaux (email, linkedin, whatsapp, sms…)
+      const { data: msgs } = await supabase
         .from("messages")
-        .select("id, content, occurred_at, is_read, prospect_id, prospects(id, first_name, last_name, company, email, phone, status, updated_at)")
+        .select("id, content, occurred_at, is_read, channel, prospect_id, prospects(id, first_name, last_name, company, email, phone, status, updated_at)")
         .eq("direction", "inbound")
         .gt("occurred_at", isoMinusDays(7))
         .not("prospect_id", "is", null)
         .order("occurred_at", { ascending: false })
         .limit(40);
-      return (data || []) as Array<{
-        id: string; content: string; occurred_at: string; is_read: boolean; prospect_id: string;
+
+      // b) Notes d'appels récentes (ce que le prospect a dit pendant l'appel)
+      //    On les considère comme un "échange" du prospect à classifier.
+      const { data: calls } = await supabase
+        .from("call_logs")
+        .select("id, notes, called_at, prospect_id, prospects(id, first_name, last_name, company, email, phone, status, updated_at)")
+        .gt("called_at", isoMinusDays(7))
+        .not("notes", "is", null)
+        .order("called_at", { ascending: false })
+        .limit(40);
+
+      type UnifiedReply = {
+        id: string;
+        content: string;
+        occurred_at: string;
+        is_read: boolean;
+        channel: string;
+        prospect_id: string;
         prospects: Prospect;
-      }>;
+        source: "message" | "call";
+      };
+
+      const fromMessages: UnifiedReply[] = (msgs || []).map((m) => ({
+        id: m.id,
+        content: m.content,
+        occurred_at: m.occurred_at,
+        is_read: m.is_read,
+        channel: (m.channel as string) || "email",
+        prospect_id: m.prospect_id,
+        prospects: m.prospects as Prospect,
+        source: "message",
+      }));
+
+      const fromCalls: UnifiedReply[] = (calls || [])
+        .filter((c) => c.notes && c.notes.trim().length > 5)
+        .map((c) => ({
+          id: `call-${c.id}`,
+          content: c.notes!,
+          occurred_at: c.called_at,
+          is_read: true, // les notes d'appel sont par définition "lues" par l'auteur
+          channel: "call",
+          prospect_id: c.prospect_id,
+          prospects: c.prospects as Prospect,
+          source: "call",
+        }));
+
+      // Combine + trie par date desc + dédup par prospect (garde le + récent)
+      const combined = [...fromMessages, ...fromCalls]
+        .sort((a, b) => b.occurred_at.localeCompare(a.occurred_at));
+
+      return combined;
     },
   });
 
@@ -216,23 +280,6 @@ function CockpitPage() {
     },
   });
 
-  // ─── Q7 : Refus anciens à requalifier (90j+) ───────────────────────
-  const { data: oldRefusals } = useQuery({
-    queryKey: ["cockpit-refusals", user?.id],
-    enabled: !!user,
-    refetchInterval: 60_000,
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("prospects")
-        .select("id, first_name, last_name, company, email, phone, status, updated_at")
-        .eq("status", "perdu")
-        .lt("updated_at", isoMinusDays(90))
-        .order("updated_at", { ascending: true })
-        .limit(20);
-      return (data || []) as Prospect[];
-    },
-  });
-
   // ─── Classification des réponses entrantes (positives / négatives / neutres)
   const classifiedReplies = useMemo(() => {
     return (incomingReplies || []).map((r) => ({
@@ -252,7 +299,7 @@ function CockpitPage() {
     (lateProspects?.length || 0) +
     (stuckInterested?.length || 0) +
     (ignoredPreviews?.length || 0) +
-    (oldRefusals?.length || 0);
+    0; // Section 7 "Refus anciens" retirée
 
   // ─── Mutations ──────────────────────────────────────────────────────
   const completeFollowUp = useMutation({
@@ -293,23 +340,6 @@ function CockpitPage() {
     },
   });
 
-  // Reactivate cold prospect : repasse en "à relancer"
-  const reactivate = useMutation({
-    mutationFn: async (prospectId: string) => {
-      const { error } = await (supabase as unknown as {
-        from: (t: string) => {
-          update: (v: Record<string, unknown>) => {
-            eq: (k: string, v: string) => Promise<{ error: { message: string } | null }>;
-          };
-        };
-      }).from("prospects").update({ status: "a_relancer", updated_at: new Date().toISOString() }).eq("id", prospectId);
-      if (error) throw new Error(error.message);
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["cockpit-refusals"] });
-      toast.success("Prospect repassé en À relancer");
-    },
-  });
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
@@ -361,10 +391,10 @@ function CockpitPage() {
       <Section
         icon={<MessageCircle className="h-5 w-5" />}
         tone="emerald"
-        title="Réponses reçues à traiter"
-        subtitle="Emails entrants des 7 derniers jours, auto-classés par signal d'intention"
+        title="Échanges récents à traiter"
+        subtitle="Emails, SMS, LinkedIn, notes d'appel des 7 derniers jours — auto-classés par signal"
         count={classifiedReplies.length}
-        empty="Pas de nouvelle réponse à traiter."
+        empty="Pas de nouvel échange à traiter."
       >
         {positives.length > 0 && (
           <SubGroup label="🟢 Signal d'achat" tone="emerald">
@@ -372,7 +402,14 @@ function CockpitPage() {
               <Item
                 key={r.id}
                 prospect={r.prospects}
-                meta={<span className="text-xs italic text-emerald-800 dark:text-emerald-300 line-clamp-1">"{r.content.slice(0, 120)}…"</span>}
+                meta={
+                  <div className="flex items-start gap-1.5">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-medium shrink-0 mt-0.5">
+                      {CHANNEL_LABEL[r.channel]?.icon} {CHANNEL_LABEL[r.channel]?.label || r.channel}
+                    </span>
+                    <span className="text-xs italic text-emerald-800 dark:text-emerald-300 line-clamp-1">"{r.content.slice(0, 140)}…"</span>
+                  </div>
+                }
                 actions={
                   <>
                     <Button size="sm" variant="default" asChild className="gap-1 bg-emerald-600 hover:bg-emerald-700">
@@ -393,7 +430,14 @@ function CockpitPage() {
               <Item
                 key={r.id}
                 prospect={r.prospects}
-                meta={<span className="text-xs italic text-muted-foreground line-clamp-1">"{r.content.slice(0, 120)}…"</span>}
+                meta={
+                  <div className="flex items-start gap-1.5">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 font-medium shrink-0 mt-0.5">
+                      {CHANNEL_LABEL[r.channel]?.icon} {CHANNEL_LABEL[r.channel]?.label || r.channel}
+                    </span>
+                    <span className="text-xs italic text-muted-foreground line-clamp-1">"{r.content.slice(0, 140)}…"</span>
+                  </div>
+                }
                 actions={
                   <Button size="sm" variant="outline" asChild className="gap-1">
                     <Link to="/inbox">Lire <ArrowRight className="h-3 w-3" /></Link>
@@ -409,7 +453,14 @@ function CockpitPage() {
               <Item
                 key={r.id}
                 prospect={r.prospects}
-                meta={<span className="text-xs italic text-rose-700 dark:text-rose-300 line-clamp-1">"{r.content.slice(0, 120)}…"</span>}
+                meta={
+                  <div className="flex items-start gap-1.5">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 font-medium shrink-0 mt-0.5">
+                      {CHANNEL_LABEL[r.channel]?.icon} {CHANNEL_LABEL[r.channel]?.label || r.channel}
+                    </span>
+                    <span className="text-xs italic text-rose-700 dark:text-rose-300 line-clamp-1">"{r.content.slice(0, 140)}…"</span>
+                  </div>
+                }
                 actions={
                   <>
                     <Button size="sm" variant="outline" onClick={() => markAsLost.mutate(r.prospect_id)} className="gap-1 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-900 hover:bg-rose-50">
@@ -540,32 +591,6 @@ function CockpitPage() {
         ))}
       </Section>
 
-      {/* ─── SECTION 7 : Refus anciens à requalifier ─── */}
-      <Section
-        icon={<Snowflake className="h-5 w-5" />}
-        tone="cyan"
-        title="Refus anciens à requalifier"
-        subtitle="Marqués perdus depuis 90+ jours — leur situation peut avoir changé"
-        count={oldRefusals?.length || 0}
-        empty="Aucun refus ancien à réveiller."
-      >
-        {(oldRefusals || []).map((p) => (
-          <Item
-            key={p.id}
-            prospect={p}
-            meta={
-              <span className="text-xs text-muted-foreground">
-                Refusé il y a {formatDistanceToNow(new Date(p.updated_at), { locale: fr })}
-              </span>
-            }
-            actions={
-              <Button size="sm" variant="outline" onClick={() => reactivate.mutate(p.id)} className="gap-1">
-                <ArrowRight className="h-3 w-3" /> Réveiller
-              </Button>
-            }
-          />
-        ))}
-      </Section>
     </div>
   );
 }
