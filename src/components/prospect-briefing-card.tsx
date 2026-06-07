@@ -16,13 +16,14 @@
  * déjà en DB. Performant, instantané.
  */
 
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { findTradeByNaf } from "@/lib/trades-catalog";
 import {
-  MapPin, Star, Globe, GlobeLock, Calendar, Mail, Phone, MessageSquare, Eye, ScrollText,
+  MapPin, Star, Globe, GlobeLock, Calendar, Mail, Phone, MessageSquare, Eye, ScrollText, Loader2, Sparkles,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -73,6 +74,8 @@ function extractCity(location: string | null | undefined): string | null {
 }
 
 export function ProspectBriefingCard({ prospect }: { prospect: Prospect }) {
+  const qc = useQueryClient();
+
   // ─── Dernier preview généré pour ce prospect (rating, nb avis, ouvertures)
   const { data: latestPreview } = useQuery({
     queryKey: ["briefing-latest-preview", prospect.id],
@@ -93,6 +96,60 @@ export function ProspectBriefingCard({ prospect }: { prospect: Prospect }) {
       } | null;
     },
   });
+
+  // ─── Auto-enrich SILENCIEUX (en background) si données manquantes ────
+  //   1. Si brief_activity est vide → enrich-prospect-brief (Claude/Gemini)
+  //   2. Si on n'a jamais récupéré rating Google → places-enrich
+  //   On déclenche AU MAX 1 fois par session (pour éviter le spam d'appels
+  //   au moindre re-render). On invalide la query prospect quand c'est fini.
+  const enrichBrief = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke("enrich-prospect-brief", {
+        body: { prospect_id: prospect.id, persist: true },
+      });
+      if (error) throw new Error(error.message);
+      if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error);
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["prospect", prospect.id] });
+      qc.invalidateQueries({ queryKey: ["briefing-latest-preview", prospect.id] });
+    },
+  });
+
+  // Cache léger des données Places (rating + photos) — on appelle directement
+  // l'edge function pour les prospects qui n'ont jamais eu d'aperçu généré
+  const { data: placesData } = useQuery({
+    queryKey: ["briefing-places", prospect.id, prospect.company, prospect.location],
+    // Skip si on a déjà l'info via un preview (économie d'appels API)
+    enabled: !!prospect.company && !latestPreview?.source_data?.places?.rating,
+    staleTime: 24 * 60 * 60 * 1000, // 24h : pas la peine de redemander Places trop souvent
+    queryFn: async () => {
+      try {
+        const { data } = await supabase.functions.invoke("places-enrich", {
+          body: {
+            name: prospect.company,
+            city: prospect.location?.split(/[,]/).pop()?.trim() || undefined,
+          },
+        });
+        return (data as { place?: { rating?: number; user_ratings?: number; phone?: string; address?: string; website?: string; match_confidence?: number } })?.place || null;
+      } catch {
+        return null;
+      }
+    },
+  });
+
+  // Trigger l'auto-enrich une seule fois quand le composant monte si brief manque
+  const triggeredRef = useRef(false);
+  useEffect(() => {
+    if (triggeredRef.current) return;
+    const briefMissing = !prospect.brief_activity || prospect.brief_activity.trim().length < 10;
+    // On n'enrichit que si on a au moins un nom de société (sinon l'IA n'a rien à analyser)
+    if (briefMissing && prospect.company && !enrichBrief.isPending) {
+      triggeredRef.current = true;
+      enrichBrief.mutate();
+    }
+  }, [prospect.id, prospect.brief_activity, prospect.company]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Dernière interaction (call OR message OR preview opened)
   const { data: lastInteraction } = useQuery({
@@ -117,9 +174,9 @@ export function ProspectBriefingCard({ prospect }: { prospect: Prospect }) {
   const activityText = prospect.brief_activity?.trim() || trade?.label || prospect.industry || null;
   const city = extractCity(prospect.location);
 
-  // ─── Rating Google (depuis le dernier preview généré)
-  const rating = latestPreview?.source_data?.places?.rating;
-  const reviewCount = latestPreview?.source_data?.places?.reviewCount;
+  // ─── Rating Google (priorité : dernier preview, sinon fetch direct Places)
+  const rating = latestPreview?.source_data?.places?.rating ?? placesData?.rating;
+  const reviewCount = latestPreview?.source_data?.places?.reviewCount ?? placesData?.user_ratings;
 
   // ─── Statut digital
   const websiteStatus = prospect.website_status || "unknown";
@@ -144,6 +201,18 @@ export function ProspectBriefingCard({ prospect }: { prospect: Prospect }) {
             <ScrollText className="h-4 w-4" />
           </div>
           <p className="text-xs uppercase tracking-wider font-semibold text-primary">Briefing prospect</p>
+          {enrichBrief.isPending && (
+            <span className="ml-auto inline-flex items-center gap-1.5 text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 px-2 py-1 rounded-full border border-amber-200 dark:border-amber-900/50">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Enrichissement IA en cours…
+            </span>
+          )}
+          {!enrichBrief.isPending && prospect.brief_activity && (prospect.brief_activity.length > 10) && (
+            <span className="ml-auto inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+              <Sparkles className="h-3 w-3 text-amber-500" />
+              Auto-enrichi
+            </span>
+          )}
         </div>
 
         {/* Phrase principale : qui c'est, ce qu'il fait, où */}
@@ -162,9 +231,16 @@ export function ProspectBriefingCard({ prospect }: { prospect: Prospect }) {
           </p>
         )}
 
-        {!activityText && (
+        {!activityText && !enrichBrief.isPending && (
           <p className="text-sm italic text-muted-foreground">
-            Pas encore d'activité renseignée. Clique sur "Préremplir avec l'IA" dans le brief en bas, ou génère un Aperçu Instantané pour auto-remplir.
+            Données insuffisantes pour générer un briefing automatique
+            {!prospect.company && " — il faut au moins une société renseignée"}.
+          </p>
+        )}
+        {!activityText && enrichBrief.isPending && (
+          <p className="text-sm italic text-muted-foreground inline-flex items-center gap-2">
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-500" />
+            Génération du briefing en cours par Claude…
           </p>
         )}
 
