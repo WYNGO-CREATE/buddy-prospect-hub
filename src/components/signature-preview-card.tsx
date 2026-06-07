@@ -71,7 +71,7 @@ export function SignaturePreviewCard() {
           <PenLine className="h-5 w-5" /> Signature email
         </CardTitle>
         <CardDescription>
-          Cette signature est ajoutée automatiquement à chaque email envoyé depuis l'app (Inbox & Workflows).
+          Cette signature est ajoutée automatiquement à chaque email envoyé depuis l'app (Inbox, Pitch IA, etc.).
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
