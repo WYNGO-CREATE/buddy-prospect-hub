@@ -99,7 +99,7 @@ export function AppSidebar() {
     { title: "Inbox", url: "/inbox", icon: Inbox, badge: unreadCount },
     { title: "Prospects", url: "/prospects", icon: Users, badge: 0 },
     { title: "Pipeline", url: "/pipeline", icon: Kanban, badge: 0 },
-    { title: "Relances", url: "/relances", icon: CalendarClock, badge: dueCount },
+    { title: "À faire aujourd'hui", url: "/relances", icon: CalendarClock, badge: dueCount },
     { title: "Prospects froids", url: "/froids", icon: Snowflake, badge: coldCount },
     { title: "Templates", url: "/templates", icon: Sparkles, badge: 0 },
     { title: "Scripts d'appel", url: "/scripts", icon: Headphones, badge: 0 },

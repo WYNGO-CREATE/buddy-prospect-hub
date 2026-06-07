@@ -1,108 +1,647 @@
+/**
+ * ─── À faire aujourd'hui — Cockpit du commercial ────────────────────────
+ *
+ * Anciennement "Relances" (page vide). Devenu le tableau de bord prioritaire
+ * du matin : 7 sections classées par chaleur, avec quick-actions inline.
+ *
+ * Sections (priorité décroissante) :
+ *  1. 🔥 Aperçu ouvert < 24h        → appeler MAINTENANT
+ *  2. 💬 Réponses reçues à traiter   → lire + classer (positif/négatif/froid)
+ *  3. 📞 Relances planifiées du jour → terminer ou repousser
+ *  4. ⚠️  Prospects en retard         → jamais appelés ou silence > 14j
+ *  5. 💼 Intéressés sans suite > 5j  → relance urgente avant qu'ils refroidissent
+ *  6. 📭 Aperçus envoyés non ouverts → le prospect a ignoré, à requalifier
+ *  7. ❄️  Refus anciens à requalifier→ "pas intéressé" depuis 90j+, tentative
+ *
+ * Toutes les queries tournent en parallèle (Promise.all) pour rapidité.
+ * Auto-refresh toutes les 60s pour capter les nouvelles ouvertures live.
+ */
+
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useAuth } from "@/hooks/use-auth";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Check } from "lucide-react";
-import { format, isPast } from "date-fns";
+import { Badge } from "@/components/ui/badge";
+import {
+  Flame, MessageCircle, CalendarClock, AlertTriangle, Briefcase, EyeOff, Snowflake,
+  Check, ArrowRight, Phone, Mail, ChevronRight, ExternalLink,
+} from "lucide-react";
+import { format, formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/relances")({
-  component: RelancesPage,
-  head: () => ({ meta: [{ title: "Relances — Wyngo Workspace" }] }),
+  component: CockpitPage,
+  head: () => ({ meta: [{ title: "À faire aujourd'hui — Wyngo Workspace" }] }),
 });
 
-function useFollowUps(filter: "upcoming" | "overdue" | "completed") {
-  return useQuery({
-    queryKey: ["followups-list", filter],
-    queryFn: async () => {
-      let q = supabase
-        .from("follow_ups")
-        .select("id, scheduled_at, reason, completed, prospect_id, prospects(first_name, last_name, company)")
-        .order("scheduled_at", { ascending: filter !== "completed" });
-      if (filter === "completed") q = q.eq("completed", true);
-      else q = q.eq("completed", false);
-      const { data, error } = await q;
-      if (error) throw error;
-      const now = new Date();
-      if (filter === "upcoming") return (data || []).filter((f) => new Date(f.scheduled_at) >= now);
-      if (filter === "overdue") return (data || []).filter((f) => new Date(f.scheduled_at) < now);
-      return data || [];
-    },
-  });
+// ─── HELPERS ──────────────────────────────────────────────────────────
+const DAY_MS = 24 * 60 * 60 * 1000;
+const now = () => new Date();
+const isoMinusDays = (d: number) => new Date(Date.now() - d * DAY_MS).toISOString();
+
+/** Classification simple par keyword d'un message inbound (positif/négatif/neutre) */
+function classifyReply(text: string): "positive" | "negative" | "neutral" {
+  const t = text.toLowerCase();
+  // Négatif (refus net)
+  if (/\b(pas intéress|pas pour moi|non merci|trop cher|plus tard|déjà un site|déjà servi|ne souhaite|désinscri|stop)/i.test(t)) {
+    return "negative";
+  }
+  // Positif (signal d'achat)
+  if (/\b(intéress|d'accord|rappele|rdv|disponib|envoyez|devis|tarif|combien|prix|quand peut)/i.test(t)) {
+    return "positive";
+  }
+  return "neutral";
 }
 
-function FollowUpList({ filter }: { filter: "upcoming" | "overdue" | "completed" }) {
+type Prospect = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  company: string | null;
+  email: string | null;
+  phone: string | null;
+  status: string | null;
+  updated_at: string;
+};
+
+type ItemBase = {
+  id: string;
+  prospect: Prospect;
+  meta?: React.ReactNode;
+};
+
+// ════════════════════════════════════════════════════════════════════
+function CockpitPage() {
+  const { user } = useAuth();
   const qc = useQueryClient();
-  const { data, isLoading } = useFollowUps(filter);
-  const complete = useMutation({
+
+  // ─── Q1 : Aperçus ouverts < 24h (PROSPECTS CHAUDS 🔥) ───────────────
+  const { data: hotPreviews } = useQuery({
+    queryKey: ["cockpit-hot-previews", user?.id],
+    enabled: !!user,
+    refetchInterval: 60_000,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("prospect_previews")
+        .select("id, prospect_id, opened_at, view_count, slug, prospects(id, first_name, last_name, company, email, phone, status, updated_at)")
+        .gt("opened_at", isoMinusDays(1))
+        .order("view_count", { ascending: false });
+      return (data || []) as Array<{
+        id: string; prospect_id: string; opened_at: string; view_count: number; slug: string;
+        prospects: Prospect;
+      }>;
+    },
+  });
+
+  // ─── Q2 : Réponses reçues non lues < 7j ────────────────────────────
+  const { data: incomingReplies } = useQuery({
+    queryKey: ["cockpit-replies", user?.id],
+    enabled: !!user,
+    refetchInterval: 60_000,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("messages")
+        .select("id, content, occurred_at, is_read, prospect_id, prospects(id, first_name, last_name, company, email, phone, status, updated_at)")
+        .eq("direction", "inbound")
+        .gt("occurred_at", isoMinusDays(7))
+        .not("prospect_id", "is", null)
+        .order("occurred_at", { ascending: false })
+        .limit(40);
+      return (data || []) as Array<{
+        id: string; content: string; occurred_at: string; is_read: boolean; prospect_id: string;
+        prospects: Prospect;
+      }>;
+    },
+  });
+
+  // ─── Q3 : Relances planifiées dans les 24h ─────────────────────────
+  const { data: dueFollowUps } = useQuery({
+    queryKey: ["cockpit-followups", user?.id],
+    enabled: !!user,
+    refetchInterval: 60_000,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("follow_ups")
+        .select("id, scheduled_at, reason, completed, prospect_id, prospects(id, first_name, last_name, company, email, phone, status, updated_at)")
+        .eq("completed", false)
+        .lte("scheduled_at", new Date(Date.now() + DAY_MS).toISOString())
+        .order("scheduled_at", { ascending: true });
+      return (data || []) as Array<{
+        id: string; scheduled_at: string; reason: string | null; completed: boolean; prospect_id: string;
+        prospects: Prospect;
+      }>;
+    },
+  });
+
+  // ─── Q4 : Prospects en retard (jamais appelés ou pas depuis 14j) ───
+  //         Exclut convertis et perdus (pas pertinent)
+  const { data: lateProspects } = useQuery({
+    queryKey: ["cockpit-late", user?.id],
+    enabled: !!user,
+    refetchInterval: 60_000,
+    queryFn: async () => {
+      // On récupère les prospects + leur dernier call_log
+      const { data: prospects } = await supabase
+        .from("prospects")
+        .select("id, first_name, last_name, company, email, phone, status, updated_at, created_at")
+        .not("status", "in", "(converti,perdu)")
+        .order("created_at", { ascending: true })
+        .limit(200);
+      if (!prospects || prospects.length === 0) return [];
+
+      // Récupère le dernier appel pour chacun
+      const { data: lastCalls } = await supabase
+        .from("call_logs")
+        .select("prospect_id, called_at")
+        .in("prospect_id", prospects.map((p) => p.id))
+        .order("called_at", { ascending: false });
+      const lastCallMap = new Map<string, string>();
+      for (const c of (lastCalls || [])) {
+        if (!lastCallMap.has(c.prospect_id)) lastCallMap.set(c.prospect_id, c.called_at);
+      }
+
+      const cutoff14 = isoMinusDays(14);
+      const cutoff5 = isoMinusDays(5); // pour ne pas alerter sur les tout récents
+
+      return prospects.filter((p) => {
+        const lastCall = lastCallMap.get(p.id);
+        if (lastCall && lastCall > cutoff14) return false; // appelé récemment
+        // Si jamais appelé : exclus si créé < 5j (laisse du temps)
+        if (!lastCall && p.created_at > cutoff5) return false;
+        return true;
+      }).map((p) => ({
+        ...p,
+        last_called_at: lastCallMap.get(p.id) || null,
+      })) as Array<Prospect & { created_at: string; last_called_at: string | null }>;
+    },
+  });
+
+  // ─── Q5 : Intéressés sans suite > 5j ───────────────────────────────
+  const { data: stuckInterested } = useQuery({
+    queryKey: ["cockpit-stuck", user?.id],
+    enabled: !!user,
+    refetchInterval: 60_000,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("prospects")
+        .select("id, first_name, last_name, company, email, phone, status, updated_at")
+        .eq("status", "interesse")
+        .lt("updated_at", isoMinusDays(5));
+      return (data || []) as Prospect[];
+    },
+  });
+
+  // ─── Q6 : Aperçus envoyés mais non ouverts > 3 jours ───────────────
+  const { data: ignoredPreviews } = useQuery({
+    queryKey: ["cockpit-ignored", user?.id],
+    enabled: !!user,
+    refetchInterval: 60_000,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("prospect_previews")
+        .select("id, prospect_id, generated_at, view_count, prospects(id, first_name, last_name, company, email, phone, status, updated_at)")
+        .eq("view_count", 0)
+        .lt("generated_at", isoMinusDays(3))
+        .order("generated_at", { ascending: false })
+        .limit(30);
+      return (data || []) as Array<{
+        id: string; prospect_id: string; generated_at: string; view_count: number;
+        prospects: Prospect;
+      }>;
+    },
+  });
+
+  // ─── Q7 : Refus anciens à requalifier (90j+) ───────────────────────
+  const { data: oldRefusals } = useQuery({
+    queryKey: ["cockpit-refusals", user?.id],
+    enabled: !!user,
+    refetchInterval: 60_000,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("prospects")
+        .select("id, first_name, last_name, company, email, phone, status, updated_at")
+        .eq("status", "perdu")
+        .lt("updated_at", isoMinusDays(90))
+        .order("updated_at", { ascending: true })
+        .limit(20);
+      return (data || []) as Prospect[];
+    },
+  });
+
+  // ─── Classification des réponses entrantes (positives / négatives / neutres)
+  const classifiedReplies = useMemo(() => {
+    return (incomingReplies || []).map((r) => ({
+      ...r,
+      tone: classifyReply(r.content),
+    }));
+  }, [incomingReplies]);
+  const positives = classifiedReplies.filter((r) => r.tone === "positive");
+  const negatives = classifiedReplies.filter((r) => r.tone === "negative");
+  const neutrals = classifiedReplies.filter((r) => r.tone === "neutral");
+
+  // ─── Total to-do ───────────────────────────────────────────────────
+  const totalTodo =
+    (hotPreviews?.length || 0) +
+    classifiedReplies.length +
+    (dueFollowUps?.length || 0) +
+    (lateProspects?.length || 0) +
+    (stuckInterested?.length || 0) +
+    (ignoredPreviews?.length || 0) +
+    (oldRefusals?.length || 0);
+
+  // ─── Mutations ──────────────────────────────────────────────────────
+  const completeFollowUp = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from("follow_ups").update({ completed: true }).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["followups-list"] });
-      toast.success("Relance terminée");
+      qc.invalidateQueries({ queryKey: ["cockpit-followups"] });
+      toast.success("Relance marquée terminée");
     },
   });
 
-  if (isLoading) return <p className="text-muted-foreground p-4">Chargement…</p>;
-  if (!data || data.length === 0) return <p className="text-muted-foreground p-4">Aucune relance.</p>;
+  const markReplyAsRead = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("messages").update({ is_read: true }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["cockpit-replies"] }),
+  });
+
+  // Auto-classify : marque comme "perdu" un prospect avec réponse négative claire
+  const markAsLost = useMutation({
+    mutationFn: async (prospectId: string) => {
+      const { error } = await (supabase as unknown as {
+        from: (t: string) => {
+          update: (v: Record<string, unknown>) => {
+            eq: (k: string, v: string) => Promise<{ error: { message: string } | null }>;
+          };
+        };
+      }).from("prospects").update({ status: "perdu", updated_at: new Date().toISOString() }).eq("id", prospectId);
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cockpit-replies"] });
+      qc.invalidateQueries({ queryKey: ["cockpit-stuck"] });
+      toast.success("Prospect marqué Perdu");
+    },
+  });
+
+  // Reactivate cold prospect : repasse en "à relancer"
+  const reactivate = useMutation({
+    mutationFn: async (prospectId: string) => {
+      const { error } = await (supabase as unknown as {
+        from: (t: string) => {
+          update: (v: Record<string, unknown>) => {
+            eq: (k: string, v: string) => Promise<{ error: { message: string } | null }>;
+          };
+        };
+      }).from("prospects").update({ status: "a_relancer", updated_at: new Date().toISOString() }).eq("id", prospectId);
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cockpit-refusals"] });
+      toast.success("Prospect repassé en À relancer");
+    },
+  });
 
   return (
-    <ul className="divide-y">
-      {data.map((f: any) => {
-        const overdue = !f.completed && isPast(new Date(f.scheduled_at));
-        return (
-          <li key={f.id} className="py-3 flex items-center justify-between gap-4">
-            <div className="flex-1">
-              <Link to="/prospects/$id" params={{ id: f.prospect_id }} className="font-medium hover:underline">
-                {f.prospects?.first_name} {f.prospects?.last_name}
-              </Link>
-              {f.prospects?.company && <span className="text-muted-foreground text-sm"> · {f.prospects.company}</span>}
-              {f.reason && <p className="text-sm text-muted-foreground">{f.reason}</p>}
-            </div>
-            <div className="text-right">
-              <div className={overdue ? "text-sm font-medium text-rose-600" : "text-sm text-muted-foreground"}>
-                {format(new Date(f.scheduled_at), "PPp", { locale: fr })}
-              </div>
-              {!f.completed && (
-                <Button size="sm" variant="outline" className="mt-1" onClick={() => complete.mutate(f.id)}>
-                  <Check className="h-4 w-4 mr-1" /> Terminer
+    <div className="max-w-7xl mx-auto space-y-6">
+      {/* Header */}
+      <div>
+        <div className="flex items-baseline justify-between flex-wrap gap-2">
+          <h1 className="text-3xl font-bold">À faire aujourd'hui</h1>
+          <p className="text-sm text-muted-foreground">{format(now(), "EEEE d MMMM yyyy", { locale: fr })}</p>
+        </div>
+        <p className="text-muted-foreground mt-1">
+          {totalTodo === 0
+            ? "🎉 Tu es à jour, plus rien à faire ! Lance une nouvelle chasse ?"
+            : `${totalTodo} action${totalTodo > 1 ? "s" : ""} en attente — classées par priorité`}
+        </p>
+      </div>
+
+      {/* ─── SECTION 1 : Chauds (Aperçu ouvert < 24h) ─── */}
+      <Section
+        icon={<Flame className="h-5 w-5" />}
+        tone="orange"
+        title="Prospects chauds"
+        subtitle="Ont ouvert leur Aperçu Instantané dans les dernières 24h — rappelle dans les 5 minutes"
+        count={hotPreviews?.length || 0}
+        empty="Personne n'a ouvert d'aperçu récemment."
+      >
+        {(hotPreviews || []).map((h) => (
+          <Item
+            key={h.id}
+            prospect={h.prospects}
+            meta={
+              <span className="text-xs text-orange-700 dark:text-orange-300 font-semibold">
+                {h.view_count}× ouvert · dernière {formatDistanceToNow(new Date(h.opened_at), { locale: fr, addSuffix: true })}
+              </span>
+            }
+            actions={
+              <>
+                {h.prospects?.phone && (
+                  <Button size="sm" variant="default" asChild className="gap-1 bg-orange-600 hover:bg-orange-700">
+                    <a href={`tel:${h.prospects.phone}`}><Phone className="h-3 w-3" /> Appeler</a>
+                  </Button>
+                )}
+              </>
+            }
+          />
+        ))}
+      </Section>
+
+      {/* ─── SECTION 2 : Réponses reçues — split par tone ─── */}
+      <Section
+        icon={<MessageCircle className="h-5 w-5" />}
+        tone="emerald"
+        title="Réponses reçues à traiter"
+        subtitle="Emails entrants des 7 derniers jours, auto-classés par signal d'intention"
+        count={classifiedReplies.length}
+        empty="Pas de nouvelle réponse à traiter."
+      >
+        {positives.length > 0 && (
+          <SubGroup label="🟢 Signal d'achat" tone="emerald">
+            {positives.map((r) => (
+              <Item
+                key={r.id}
+                prospect={r.prospects}
+                meta={<span className="text-xs italic text-emerald-800 dark:text-emerald-300 line-clamp-1">"{r.content.slice(0, 120)}…"</span>}
+                actions={
+                  <>
+                    <Button size="sm" variant="default" asChild className="gap-1 bg-emerald-600 hover:bg-emerald-700">
+                      <Link to="/inbox">Répondre <ArrowRight className="h-3 w-3" /></Link>
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => markReplyAsRead.mutate(r.id)} title="Marquer lu">
+                      <Check className="h-3.5 w-3.5" />
+                    </Button>
+                  </>
+                }
+              />
+            ))}
+          </SubGroup>
+        )}
+        {neutrals.length > 0 && (
+          <SubGroup label="🟡 À analyser" tone="amber">
+            {neutrals.map((r) => (
+              <Item
+                key={r.id}
+                prospect={r.prospects}
+                meta={<span className="text-xs italic text-muted-foreground line-clamp-1">"{r.content.slice(0, 120)}…"</span>}
+                actions={
+                  <Button size="sm" variant="outline" asChild className="gap-1">
+                    <Link to="/inbox">Lire <ArrowRight className="h-3 w-3" /></Link>
+                  </Button>
+                }
+              />
+            ))}
+          </SubGroup>
+        )}
+        {negatives.length > 0 && (
+          <SubGroup label="🔴 Probable refus" tone="rose">
+            {negatives.map((r) => (
+              <Item
+                key={r.id}
+                prospect={r.prospects}
+                meta={<span className="text-xs italic text-rose-700 dark:text-rose-300 line-clamp-1">"{r.content.slice(0, 120)}…"</span>}
+                actions={
+                  <>
+                    <Button size="sm" variant="outline" onClick={() => markAsLost.mutate(r.prospect_id)} className="gap-1 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-900 hover:bg-rose-50">
+                      Marquer perdu
+                    </Button>
+                    <Button size="sm" variant="ghost" asChild>
+                      <Link to="/inbox">Voir <ChevronRight className="h-3.5 w-3.5" /></Link>
+                    </Button>
+                  </>
+                }
+              />
+            ))}
+          </SubGroup>
+        )}
+      </Section>
+
+      {/* ─── SECTION 3 : Relances planifiées du jour ─── */}
+      <Section
+        icon={<CalendarClock className="h-5 w-5" />}
+        tone="sky"
+        title="Relances planifiées"
+        subtitle="À faire aujourd'hui (ou en retard)"
+        count={dueFollowUps?.length || 0}
+        empty="Aucune relance planifiée pour aujourd'hui."
+      >
+        {(dueFollowUps || []).map((f) => {
+          const overdue = new Date(f.scheduled_at) < now();
+          return (
+            <Item
+              key={f.id}
+              prospect={f.prospects}
+              meta={
+                <span className={cn("text-xs", overdue ? "text-rose-600 font-semibold" : "text-muted-foreground")}>
+                  {overdue ? "⚠️ En retard · " : "📅 "}{format(new Date(f.scheduled_at), "PPp", { locale: fr })}
+                  {f.reason && ` · ${f.reason}`}
+                </span>
+              }
+              actions={
+                <Button size="sm" variant="outline" onClick={() => completeFollowUp.mutate(f.id)} className="gap-1">
+                  <Check className="h-3.5 w-3.5" /> Terminer
                 </Button>
-              )}
-            </div>
-          </li>
-        );
-      })}
-    </ul>
+              }
+            />
+          );
+        })}
+      </Section>
+
+      {/* ─── SECTION 4 : En retard d'appel ─── */}
+      <Section
+        icon={<AlertTriangle className="h-5 w-5" />}
+        tone="amber"
+        title="Prospects en retard d'appel"
+        subtitle="Jamais appelés depuis leur création > 5j, ou silence > 14j"
+        count={lateProspects?.length || 0}
+        empty="Tout le monde a été contacté récemment."
+      >
+        {(lateProspects || []).slice(0, 15).map((p) => (
+          <Item
+            key={p.id}
+            prospect={p}
+            meta={
+              <span className="text-xs text-muted-foreground">
+                {p.last_called_at
+                  ? `Dernier appel ${formatDistanceToNow(new Date(p.last_called_at), { locale: fr, addSuffix: true })}`
+                  : "Jamais appelé"}
+              </span>
+            }
+            actions={p.phone && (
+              <Button size="sm" variant="outline" asChild className="gap-1">
+                <a href={`tel:${p.phone}`}><Phone className="h-3 w-3" /> Appeler</a>
+              </Button>
+            )}
+          />
+        ))}
+      </Section>
+
+      {/* ─── SECTION 5 : Intéressés sans suite ─── */}
+      <Section
+        icon={<Briefcase className="h-5 w-5" />}
+        tone="violet"
+        title="Intéressés sans suite > 5j"
+        subtitle="Ils étaient chauds, ne les laisse pas refroidir"
+        count={stuckInterested?.length || 0}
+        empty="Aucun prospect intéressé sans suite récente."
+      >
+        {(stuckInterested || []).map((p) => (
+          <Item
+            key={p.id}
+            prospect={p}
+            meta={
+              <span className="text-xs text-violet-700 dark:text-violet-300">
+                Statut Intéressé · pas de maj depuis {formatDistanceToNow(new Date(p.updated_at), { locale: fr, addSuffix: false })}
+              </span>
+            }
+            actions={p.phone && (
+              <Button size="sm" variant="default" asChild className="gap-1 bg-violet-600 hover:bg-violet-700">
+                <a href={`tel:${p.phone}`}><Phone className="h-3 w-3" /> Relancer</a>
+              </Button>
+            )}
+          />
+        ))}
+      </Section>
+
+      {/* ─── SECTION 6 : Aperçus envoyés non ouverts ─── */}
+      <Section
+        icon={<EyeOff className="h-5 w-5" />}
+        tone="slate"
+        title="Aperçus envoyés non ouverts"
+        subtitle="Le prospect n'a même pas cliqué — tente un appel direct ou un autre canal"
+        count={ignoredPreviews?.length || 0}
+        empty="Tous les aperçus envoyés ont été ouverts."
+      >
+        {(ignoredPreviews || []).map((i) => (
+          <Item
+            key={i.id}
+            prospect={i.prospects}
+            meta={
+              <span className="text-xs text-muted-foreground">
+                Envoyé il y a {formatDistanceToNow(new Date(i.generated_at), { locale: fr })} · 0 vue
+              </span>
+            }
+            actions={i.prospects?.phone && (
+              <Button size="sm" variant="outline" asChild className="gap-1">
+                <a href={`tel:${i.prospects.phone}`}><Phone className="h-3 w-3" /> Appeler</a>
+              </Button>
+            )}
+          />
+        ))}
+      </Section>
+
+      {/* ─── SECTION 7 : Refus anciens à requalifier ─── */}
+      <Section
+        icon={<Snowflake className="h-5 w-5" />}
+        tone="cyan"
+        title="Refus anciens à requalifier"
+        subtitle="Marqués perdus depuis 90+ jours — leur situation peut avoir changé"
+        count={oldRefusals?.length || 0}
+        empty="Aucun refus ancien à réveiller."
+      >
+        {(oldRefusals || []).map((p) => (
+          <Item
+            key={p.id}
+            prospect={p}
+            meta={
+              <span className="text-xs text-muted-foreground">
+                Refusé il y a {formatDistanceToNow(new Date(p.updated_at), { locale: fr })}
+              </span>
+            }
+            actions={
+              <Button size="sm" variant="outline" onClick={() => reactivate.mutate(p.id)} className="gap-1">
+                <ArrowRight className="h-3 w-3" /> Réveiller
+              </Button>
+            }
+          />
+        ))}
+      </Section>
+    </div>
   );
 }
 
-function RelancesPage() {
+// ─── SOUS-COMPOSANTS ──────────────────────────────────────────────────
+
+type Tone = "orange" | "emerald" | "sky" | "amber" | "violet" | "slate" | "cyan" | "rose";
+
+const TONE_CLS: Record<Tone, { ring: string; pill: string; icon: string }> = {
+  orange:  { ring: "border-orange-200 dark:border-orange-900/50", pill: "bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300", icon: "text-orange-500" },
+  emerald: { ring: "border-emerald-200 dark:border-emerald-900/50", pill: "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300", icon: "text-emerald-500" },
+  sky:     { ring: "border-sky-200 dark:border-sky-900/50", pill: "bg-sky-100 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300", icon: "text-sky-500" },
+  amber:   { ring: "border-amber-200 dark:border-amber-900/50", pill: "bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300", icon: "text-amber-500" },
+  violet:  { ring: "border-violet-200 dark:border-violet-900/50", pill: "bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300", icon: "text-violet-500" },
+  slate:   { ring: "border-slate-200 dark:border-slate-800", pill: "bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-400", icon: "text-slate-500" },
+  cyan:    { ring: "border-cyan-200 dark:border-cyan-900/50", pill: "bg-cyan-100 dark:bg-cyan-950/40 text-cyan-700 dark:text-cyan-300", icon: "text-cyan-500" },
+  rose:    { ring: "border-rose-200 dark:border-rose-900/50", pill: "bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300", icon: "text-rose-500" },
+};
+
+function Section({
+  icon, tone, title, subtitle, count, empty, children,
+}: {
+  icon: React.ReactNode;
+  tone: Tone;
+  title: string;
+  subtitle: string;
+  count: number;
+  empty: string;
+  children: React.ReactNode;
+}) {
+  const cls = TONE_CLS[tone];
+  if (count === 0) return null; // on cache les sections vides pour ne montrer QUE ce qui compte
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Relances</h1>
-        <p className="text-muted-foreground">Planifiez et suivez vos rappels</p>
+    <Card className={cn("overflow-hidden", cls.ring)}>
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <span className={cls.icon}>{icon}</span>
+          {title}
+          <Badge className={cn("ml-1 font-bold", cls.pill, "border-0")}>{count}</Badge>
+        </CardTitle>
+        <CardDescription className="text-xs">{subtitle}</CardDescription>
+      </CardHeader>
+      <CardContent className="p-0 divide-y">
+        {count === 0 ? <p className="p-4 text-sm text-muted-foreground italic">{empty}</p> : children}
+      </CardContent>
+    </Card>
+  );
+}
+
+function SubGroup({ label, tone, children }: { label: string; tone: Tone; children: React.ReactNode }) {
+  const cls = TONE_CLS[tone];
+  return (
+    <div className={cn("py-2 px-4 border-l-2", cls.icon.replace("text-", "border-"))}>
+      <div className={cn("text-[11px] font-semibold uppercase tracking-wider mb-1", cls.icon)}>{label}</div>
+      <div className="divide-y">{children}</div>
+    </div>
+  );
+}
+
+function Item({ prospect, meta, actions }: ItemBase & { actions?: React.ReactNode }) {
+  if (!prospect) return null;
+  return (
+    <div className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-muted/40 transition">
+      <div className="flex-1 min-w-0">
+        <Link
+          to="/prospects/$id"
+          params={{ id: prospect.id }}
+          className="font-medium hover:underline truncate inline-flex items-center gap-1.5"
+        >
+          {prospect.first_name} {prospect.last_name}
+          {prospect.company && <span className="text-muted-foreground">· {prospect.company}</span>}
+          <ExternalLink className="h-3 w-3 opacity-40" />
+        </Link>
+        {meta && <div className="mt-0.5">{meta}</div>}
       </div>
-      <Card>
-        <CardHeader><CardTitle>Vos relances</CardTitle></CardHeader>
-        <CardContent>
-          <Tabs defaultValue="upcoming">
-            <TabsList>
-              <TabsTrigger value="upcoming">À venir</TabsTrigger>
-              <TabsTrigger value="overdue">En retard</TabsTrigger>
-              <TabsTrigger value="completed">Terminées</TabsTrigger>
-            </TabsList>
-            <TabsContent value="upcoming"><FollowUpList filter="upcoming" /></TabsContent>
-            <TabsContent value="overdue"><FollowUpList filter="overdue" /></TabsContent>
-            <TabsContent value="completed"><FollowUpList filter="completed" /></TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+      <div className="flex items-center gap-1.5 flex-shrink-0">{actions}</div>
     </div>
   );
 }
