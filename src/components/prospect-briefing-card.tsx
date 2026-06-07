@@ -22,6 +22,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { findTradeByNaf } from "@/lib/trades-catalog";
+import { computeSmartTags } from "@/lib/smart-tags";
 import {
   MapPin, Star, Globe, GlobeLock, Calendar, Mail, Phone, MessageSquare, Eye, ScrollText, Loader2, Sparkles,
 } from "lucide-react";
@@ -182,6 +183,19 @@ export function ProspectBriefingCard({ prospect }: { prospect: Prospect }) {
   const websiteStatus = prospect.website_status || "unknown";
   const wsMeta = WEBSITE_STATUS_META[websiteStatus] || WEBSITE_STATUS_META.unknown;
 
+  // ─── Smart tags calculés à partir de toutes les données disponibles
+  const smartTags = computeSmartTags({
+    status: prospect.status,
+    website_status: prospect.website_status,
+    created_at: prospect.created_at,
+    last_preview_opened_at: latestPreview?.opened_at ?? null,
+    preview_view_count: latestPreview?.view_count ?? 0,
+    has_preview_generated: !!latestPreview,
+    last_called_at: lastInteraction?.type === "call" ? lastInteraction.date : null,
+    last_inbound_at: lastInteraction?.type === "email_in" ? lastInteraction.date : null,
+    google_rating: typeof rating === "number" ? rating : null,
+  });
+
   // ─── Dernière interaction (humanisée)
   const interactionLabel = lastInteraction
     ? {
@@ -242,6 +256,22 @@ export function ProspectBriefingCard({ prospect }: { prospect: Prospect }) {
             <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-500" />
             Génération du briefing en cours par Claude…
           </p>
+        )}
+
+        {/* Smart tags (signaux auto-calculés depuis les données réelles) */}
+        {smartTags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {smartTags.map((t) => (
+              <span
+                key={t.key}
+                title={t.tooltip}
+                className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full border ${t.cls}`}
+              >
+                <span>{t.icon}</span>
+                <span>{t.label}</span>
+              </span>
+            ))}
+          </div>
         )}
 
         {/* Ligne de facts : badges colorés */}

@@ -17,6 +17,7 @@ import { PROSPECT_STATUSES, STATUS_LABELS, STATUS_VARIANTS, SUGGESTION_TONE, sug
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { toCSV, downloadCSV } from "@/lib/csv";
+import { computeSmartTags } from "@/lib/smart-tags";
 import { format, formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 import { ImportCSVDialog } from "@/components/import-csv-dialog";
@@ -150,6 +151,56 @@ function ProspectsPage() {
     });
     return m;
   }, [allCalls]);
+
+  // ─── Batch : ouvertures aperçus + nb messages inbound pour smart-tags ──
+  const { data: previewStats } = useQuery({
+    queryKey: ["preview-stats-list"],
+    refetchInterval: 60_000,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("prospect_previews")
+        .select("prospect_id, opened_at, view_count, source_data");
+      return data || [];
+    },
+  });
+  // Map prospect_id → { last_opened_at, view_count, has_generated, rating }
+  const previewMap = useMemo(() => {
+    const m = new Map<string, { last_opened_at: string | null; view_count: number; has_generated: boolean; rating: number | null }>();
+    (previewStats || []).forEach((p: any) => {
+      const existing = m.get(p.prospect_id);
+      const newOpened = p.opened_at && (!existing?.last_opened_at || p.opened_at > existing.last_opened_at) ? p.opened_at : existing?.last_opened_at ?? null;
+      const newViewCount = Math.max(existing?.view_count || 0, p.view_count || 0);
+      const rating = p.source_data?.places?.rating ?? existing?.rating ?? null;
+      m.set(p.prospect_id, {
+        last_opened_at: newOpened,
+        view_count: newViewCount,
+        has_generated: true,
+        rating,
+      });
+    });
+    return m;
+  }, [previewStats]);
+
+  const { data: lastInbounds } = useQuery({
+    queryKey: ["last-inbound-list"],
+    refetchInterval: 60_000,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("messages")
+        .select("prospect_id, occurred_at")
+        .eq("direction", "inbound")
+        .not("prospect_id", "is", null)
+        .order("occurred_at", { ascending: false });
+      return data || [];
+    },
+  });
+  const lastInboundMap = useMemo(() => {
+    const m = new Map<string, string>();
+    (lastInbounds || []).forEach((msg: any) => {
+      if (!m.has(msg.prospect_id)) m.set(msg.prospect_id, msg.occurred_at);
+    });
+    return m;
+  }, [lastInbounds]);
 
   // Catégorisation appel : never / recent (<14 j) / stale (>14 j)
   const callBucket = (prospectId: string): "never" | "recent" | "stale" => {
@@ -569,13 +620,35 @@ function ProspectsPage() {
                       )}
                     </TableCell>
                     <TableCell>
+                      {/* Smart tags auto-calculés (signal vs manuel pourri) */}
                       <div className="flex flex-wrap gap-1">
-                        {(p.tags || []).slice(0, 3).map((t: string) => (
-                          <span key={t} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">{t}</span>
-                        ))}
-                        {(p.tags || []).length > 3 && (
-                          <span className="text-[10px] text-muted-foreground">+{p.tags.length - 3}</span>
-                        )}
+                        {(() => {
+                          const previewInfo = previewMap.get(p.id);
+                          const smartTags = computeSmartTags({
+                            status: p.status,
+                            website_status: (p as { website_status?: "no_website" | "outdated" | "has_website" | "unknown" | null }).website_status,
+                            created_at: p.created_at,
+                            last_preview_opened_at: previewInfo?.last_opened_at ?? null,
+                            preview_view_count: previewInfo?.view_count ?? 0,
+                            has_preview_generated: previewInfo?.has_generated ?? false,
+                            last_called_at: lastCallMap.get(p.id) ?? null,
+                            last_inbound_at: lastInboundMap.get(p.id) ?? null,
+                            google_rating: previewInfo?.rating ?? null,
+                          });
+                          if (smartTags.length === 0) {
+                            return <span className="text-[10px] text-muted-foreground italic">—</span>;
+                          }
+                          return smartTags.map((t) => (
+                            <span
+                              key={t.key}
+                              title={t.tooltip}
+                              className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border ${t.cls}`}
+                            >
+                              <span>{t.icon}</span>
+                              <span>{t.label}</span>
+                            </span>
+                          ));
+                        })()}
                       </div>
                     </TableCell>
                     <TableCell className="text-sm">
