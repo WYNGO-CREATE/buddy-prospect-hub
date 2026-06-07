@@ -17,6 +17,7 @@ import { CallModeDrawer } from "@/components/call-mode-drawer";
 import { PitchGeneratorDialog } from "@/components/pitch-generator-dialog";
 import { InstantPreviewDialog } from "@/components/instant-preview-dialog";
 import { PreviewBriefCard } from "@/components/preview-brief-card";
+import { ProspectBriefingCard } from "@/components/prospect-briefing-card";
 import { findTradeByNaf } from "@/lib/trades-catalog";
 import { Briefcase } from "lucide-react";
 import { PROSPECT_STATUSES, STATUS_LABELS, STATUS_VARIANTS, EVENT_LABELS, type ProspectStatus } from "@/lib/crm";
@@ -372,6 +373,12 @@ function ProspectDetail() {
           </Select>
         </div>
       </div>
+
+      {/* ─── Carte BRIEFING — synthèse 3-secondes du prospect ───
+          En haut de la fiche, auto-composée à partir de tout ce qu'on sait
+          (activité précise, ville, note Google, statut digital, dernière
+          interaction). C'est le "qui c'est, où on en est" en un coup d'œil. */}
+      <ProspectBriefingCard prospect={prospect as Parameters<typeof ProspectBriefingCard>[0]["prospect"]} />
 
       {/* ─── Carte d'actions de contact rapides ───
           Met en avant les 3 actions clés : appeler, écrire, voir le site.
