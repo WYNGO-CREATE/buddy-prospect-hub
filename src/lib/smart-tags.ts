@@ -75,7 +75,9 @@ const TAG_DEFS: Record<SmartTagKey, Omit<SmartTag, "key">> = {
   no_website: {
     label: "Sans site",
     icon: "🌐",
-    cls: "bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-800",
+    // Fuchsia (rose-pourpre) plutôt que rose pour ne pas se confondre avec
+    // le badge "Jamais appelé" (rose) qui apparait sur quasi toutes les lignes
+    cls: "bg-fuchsia-100 dark:bg-fuchsia-950/40 text-fuchsia-700 dark:text-fuchsia-300 border-fuchsia-300 dark:border-fuchsia-800",
     tooltip: "Pas de site web — cible prime Wyngo",
     priority: 5,
   },
