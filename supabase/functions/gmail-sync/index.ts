@@ -56,31 +56,113 @@ function extractEmail(addrHeader: string | undefined): string | null {
   return m ? m[1].toLowerCase().trim() : null;
 }
 
+/**
+ * Décode un base64url Gmail en STRING UTF-8 correctement.
+ *
+ * Bug avant : atob() retourne une "binary string" où chaque octet est traité
+ * comme un char latin-1. Les caractères multi-octets UTF-8 (é = 0xC3 0xA9,
+ * à = 0xC3 0xA0, etc.) restent split en deux chars distincts qui s'affichent
+ * "Ã©" et "Ã ". Catastrophe pour le français.
+ *
+ * Fix : on prend les octets bruts via atob → Uint8Array → TextDecoder UTF-8.
+ */
 function decodeBase64Url(data: string): string {
   try {
-    return atob(data.replace(/-/g, "+").replace(/_/g, "/"));
+    const padded = data.replace(/-/g, "+").replace(/_/g, "/");
+    const binary = atob(padded);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
   } catch {
     return "";
   }
 }
 
-// Extrait le contenu texte d'un message Gmail
+/**
+ * Nettoie le HTML d'un email :
+ *  • supprime <head>, <style>, <script>, <!--...--> (sinon le CSS leak en
+ *    plain text dans la liste — "text-decoration:underline; ..." visible)
+ *  • convertit <br>, </p>, </div> en saut de ligne
+ *  • strip tous les autres tags
+ *  • décode les entités HTML usuelles (&eacute;, &amp;, &nbsp;, &#39;...)
+ *  • collapse les whitespace excédentaires
+ */
+function htmlToPlainText(html: string): string {
+  let s = html;
+  // Vire les blocs entiers qui n'ont rien à faire dans le texte
+  s = s.replace(/<head\b[^>]*>[\s\S]*?<\/head>/gi, "");
+  s = s.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "");
+  s = s.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
+  s = s.replace(/<!--[\s\S]*?-->/g, "");
+  // Préserver les sauts de ligne
+  s = s.replace(/<br\s*\/?>/gi, "\n");
+  s = s.replace(/<\/p>/gi, "\n\n");
+  s = s.replace(/<\/div>/gi, "\n");
+  s = s.replace(/<\/li>/gi, "\n");
+  s = s.replace(/<\/tr>/gi, "\n");
+  // Strip tous les tags restants
+  s = s.replace(/<[^>]+>/g, "");
+  // Décode les entités HTML les plus courantes
+  s = s
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&eacute;/g, "é").replace(/&egrave;/g, "è").replace(/&ecirc;/g, "ê").replace(/&euml;/g, "ë")
+    .replace(/&agrave;/g, "à").replace(/&acirc;/g, "â").replace(/&auml;/g, "ä")
+    .replace(/&ocirc;/g, "ô").replace(/&ouml;/g, "ö")
+    .replace(/&ucirc;/g, "û").replace(/&uuml;/g, "ü").replace(/&ugrave;/g, "ù")
+    .replace(/&icirc;/g, "î").replace(/&iuml;/g, "ï")
+    .replace(/&ccedil;/g, "ç")
+    .replace(/&Eacute;/g, "É").replace(/&Egrave;/g, "È")
+    .replace(/&Agrave;/g, "À").replace(/&Acirc;/g, "Â")
+    .replace(/&copy;/g, "©").replace(/&reg;/g, "®").replace(/&trade;/g, "™")
+    .replace(/&laquo;/g, "«").replace(/&raquo;/g, "»")
+    .replace(/&hellip;/g, "…").replace(/&mdash;/g, "—").replace(/&ndash;/g, "–")
+    .replace(/&euro;/g, "€")
+    // Entités numériques décimales (&#233; = é, etc.)
+    .replace(/&#(\d+);/g, (_, n) => {
+      const code = parseInt(n, 10);
+      return Number.isFinite(code) && code > 0 && code < 0x10FFFF ? String.fromCodePoint(code) : "";
+    })
+    // Entités numériques hex (&#xE9; = é)
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => {
+      const code = parseInt(h, 16);
+      return Number.isFinite(code) && code > 0 && code < 0x10FFFF ? String.fromCodePoint(code) : "";
+    });
+  // Collapse whitespace en gardant des sauts de ligne propres
+  s = s
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return s;
+}
+
+/** Extrait le contenu texte d'un message Gmail (en préférant text/plain) */
 function getMessageContent(payload: any): string {
   if (!payload) return "";
-  // Préférence : text/plain, sinon text/html (strip tags simple)
-  if (payload.body?.data && payload.mimeType?.startsWith("text/")) {
-    let text = decodeBase64Url(payload.body.data);
-    if (payload.mimeType === "text/html") {
-      text = text.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
-    }
+  if (payload.body?.data && typeof payload.mimeType === "string" && payload.mimeType.startsWith("text/")) {
+    const text = decodeBase64Url(payload.body.data);
+    if (payload.mimeType === "text/html") return htmlToPlainText(text);
     return text;
   }
   if (Array.isArray(payload.parts)) {
-    // Préfère text/plain
+    // Préférence : text/plain, sinon text/html, sinon récursif
     const plain = payload.parts.find((p: any) => p.mimeType === "text/plain");
-    if (plain) return getMessageContent(plain);
+    if (plain) {
+      const r = getMessageContent(plain);
+      if (r) return r;
+    }
     const html = payload.parts.find((p: any) => p.mimeType === "text/html");
-    if (html) return getMessageContent(html);
+    if (html) {
+      const r = getMessageContent(html);
+      if (r) return r;
+    }
     for (const p of payload.parts) {
       const r = getMessageContent(p);
       if (r) return r;
@@ -90,7 +172,7 @@ function getMessageContent(payload: any): string {
 }
 
 // ─── Sync un compte Gmail ───
-async function syncAccount(admin: any, account: any) {
+async function syncAccount(admin: any, account: any, options: { forceFullResync?: boolean } = {}) {
   let access_token = account.access_token;
   const expiresAt = new Date(account.expires_at).getTime();
 
@@ -105,10 +187,13 @@ async function syncAccount(admin: any, account: any) {
       .eq("id", account.id);
   }
 
+  // forceFullResync : ignore le history_id pour re-fetch les 30 derniers jours.
+  //   Utile pour corriger les emails déjà importés avec un encodage cassé.
+  const skipIncremental = !!options.forceFullResync;
   let messagesToProcess: string[] = [];
   let newHistoryId: string | null = null;
 
-  if (account.last_history_id) {
+  if (account.last_history_id && !skipIncremental) {
     // Sync incrémental depuis le dernier historyId
     try {
       const hist = await gmailFetch(
@@ -127,7 +212,7 @@ async function syncAccount(admin: any, account: any) {
     }
   }
 
-  if (messagesToProcess.length === 0 && !account.last_history_id) {
+  if (messagesToProcess.length === 0 && (!account.last_history_id || skipIncremental)) {
     // Première sync : 30 derniers jours
     const cutoffDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
       .toISOString().slice(0, 10).replace(/-/g, "/");
@@ -146,17 +231,19 @@ async function syncAccount(admin: any, account: any) {
 
   let imported = 0;
   let skipped = 0;
+  let updated = 0;
 
   for (const msgId of messagesToProcess) {
     try {
-      // Skip si déjà importé
+      // On regarde si on l'a déjà (pour UPDATE le contenu si décodage cassé,
+      // au lieu de re-créer un doublon). Permet la re-sync corrective sans
+      // perdre les data manuelles (is_read, is_archived, prospect_id, etc.).
       const { data: existing } = await admin
         .from("messages")
-        .select("id")
+        .select("id, content")
         .eq("owner_id", account.user_id)
         .eq("external_id", msgId)
         .maybeSingle();
-      if (existing) { skipped++; continue; }
 
       // Fetch le message complet
       const msg = await gmailFetch(
@@ -212,6 +299,29 @@ async function syncAccount(admin: any, account: any) {
 
       const content = getMessageContent(msg.payload) || msg.snippet || "";
 
+      if (existing) {
+        // Détecte si le contenu existant est CASSÉ (signaux d'encodage latin-1
+        // ou CSS leak) et UPDATE avec le nouveau décodage correct. Sinon, skip.
+        const looksBroken = !existing.content
+          || /Ã©|Ã¨|Ã |Ã´|Ã¹|Ã¢|Ã®|Ã«|Â |Ã«|Ã§|text-decoration:|line-height:|font-family:|@media\b/i.test(existing.content);
+        if (looksBroken) {
+          const { error: updErr } = await admin.from("messages").update({
+            subject,
+            content: content.slice(0, 50_000),
+            sender_name: fromName || null,
+            sender_email: fromEmail,
+            recipient_email: toEmail,
+            from_email: fromEmail,
+            to_email: toEmail,
+          }).eq("id", existing.id);
+          if (!updErr) updated++;
+          else skipped++;
+        } else {
+          skipped++;
+        }
+        continue;
+      }
+
       const { error: insertErr } = await admin.from("messages").insert({
         prospect_id: prospectId,            // ✓ peut être null désormais
         owner_id: account.user_id,
@@ -250,7 +360,7 @@ async function syncAccount(admin: any, account: any) {
     })
     .eq("id", account.id);
 
-  return { account_id: account.id, email: account.email, imported, skipped, processed: messagesToProcess.length };
+  return { account_id: account.id, email: account.email, imported, updated, skipped, processed: messagesToProcess.length };
 }
 
 Deno.serve(async (req) => {
@@ -293,10 +403,20 @@ Deno.serve(async (req) => {
       return json({ error: "Auth or cron secret required" }, 401);
     }
 
+    // Body optionnel : { force_full_resync: true } → ignore last_history_id
+    // pour re-importer les 30 derniers jours et UPDATE les messages cassés.
+    let forceFullResync = false;
+    try {
+      const body = req.method === "POST" ? await req.json() : null;
+      if (body && typeof body === "object" && (body as { force_full_resync?: boolean }).force_full_resync === true) {
+        forceFullResync = true;
+      }
+    } catch {/* pas de body, c'est ok */}
+
     const results = [];
     for (const account of targetAccounts) {
       try {
-        const r = await syncAccount(admin, account);
+        const r = await syncAccount(admin, account, { forceFullResync });
         results.push(r);
       } catch (e) {
         const msg = String(e);

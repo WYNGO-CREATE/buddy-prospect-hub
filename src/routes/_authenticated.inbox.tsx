@@ -49,6 +49,7 @@ import {
   RefreshCw,
   Unplug,
   Trash2,
+  Wand2,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -330,6 +331,37 @@ function InboxPage() {
             >
               <RefreshCw className={`h-4 w-4 mr-1.5 ${syncing ? "animate-spin" : ""}`} />
               {syncing ? "Sync…" : "Synchroniser Gmail"}
+            </Button>
+            {/* Re-traiter : force un re-fetch des 30 derniers jours ET met à
+                jour les emails dont l'encodage UTF-8 est cassé (accents
+                garbled, CSS leak). À utiliser après un fix de parsing. */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                setSyncing(true);
+                const { data, error } = await supabase.functions.invoke("gmail-sync", {
+                  body: { force_full_resync: true },
+                });
+                setSyncing(false);
+                if (error) {
+                  toast.error("Re-traitement échoué", { description: error.message });
+                } else {
+                  const r = (data as { results?: Array<{ imported?: number; updated?: number; processed?: number }> })?.results?.[0];
+                  const upd = r?.updated ?? 0;
+                  const imp = r?.imported ?? 0;
+                  toast.success("Re-traitement terminé", {
+                    description: `${upd} email(s) corrigé(s) · ${imp} nouveau(x)`,
+                  });
+                }
+                qc.invalidateQueries({ queryKey: ["inbox-messages"] });
+                qc.invalidateQueries({ queryKey: ["inbox-counts"] });
+              }}
+              disabled={syncing}
+              title="Re-télécharger et re-décoder les 30 derniers jours (corrige les accents cassés)"
+            >
+              <Wand2 className="h-4 w-4 mr-1.5" />
+              Re-traiter
             </Button>
             {/* Si le scope readonly manque dans le token actuel, on permet la
                 reconnexion qui re-déclenche le consent OAuth avec tous les scopes. */}
