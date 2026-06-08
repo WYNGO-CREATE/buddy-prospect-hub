@@ -14,10 +14,11 @@ import {
 import { Plus, Pencil, Trash2, Mail, Sparkles, Eye, Users, User, Wand2, Brain, Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { AVAILABLE_VARS, renderTemplate } from "@/lib/render-template";
+import { EmailGeneratorForProspect } from "@/components/email-generator-for-prospect";
 
 export const Route = createFileRoute("/_authenticated/templates")({
   component: TemplatesPage,
-  head: () => ({ meta: [{ title: "Templates — Wyngo Workspace" }] }),
+  head: () => ({ meta: [{ title: "Génération d'emails — Wyngo Workspace" }] }),
 });
 
 type Template = {
@@ -79,13 +80,11 @@ function TemplatesPage() {
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Sparkles className="h-6 w-6 text-primary" />
-            Templates d'emails
+            Génération d'emails
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Vos modèles réutilisables avec variables{" "}
-            <code className="text-xs bg-muted px-1 py-0.5 rounded">{`{{prenom}}`}</code>{" "}
-            <code className="text-xs bg-muted px-1 py-0.5 rounded">{`{{entreprise}}`}</code>{" "}
-            — utilisables dans l'Inbox et les Workflows.
+            Centre de génération d'emails pour ton équipe : IA personnalisée par prospect, templates réutilisables.
+            Chaque envoi est automatiquement loggé dans le suivi de la fiche prospect.
           </p>
         </div>
         <div className="flex gap-2">
@@ -99,6 +98,13 @@ function TemplatesPage() {
           </Button>
         </div>
       </div>
+
+      {/* ═══ GÉNÉRATEUR EMAIL IA POUR UN PROSPECT — section centrale ═══
+          Picker prospect + flux PitchGeneratorDialog. L'email envoyé est
+          loggé automatiquement dans la fiche prospect (table messages
+          via gmail-send). C'est LE point d'entrée unique pour rédiger un
+          cold email IA — la fiche prospect ne sert plus qu'au SUIVI. */}
+      <EmailGeneratorForProspect />
 
       {/* Contexte IA — bloc pliable */}
       <AIContextCard

@@ -101,7 +101,7 @@ export function AppSidebar() {
     { title: "Pipeline", url: "/pipeline", icon: Kanban, badge: 0 },
     { title: "À faire aujourd'hui", url: "/relances", icon: CalendarClock, badge: dueCount },
     { title: "Prospects froids", url: "/froids", icon: Snowflake, badge: coldCount },
-    { title: "Templates", url: "/templates", icon: Sparkles, badge: 0 },
+    { title: "Génération d'emails", url: "/templates", icon: Sparkles, badge: 0 },
     { title: "Scripts d'appel", url: "/scripts", icon: Headphones, badge: 0 },
     { title: "Chasse aux prospects", url: "/chasse", icon: Target, badge: 0 },
     { title: "Apollo", url: "/apollo", icon: ExternalLink, badge: 0 },

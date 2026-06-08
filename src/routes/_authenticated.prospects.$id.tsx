@@ -14,7 +14,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { ArrowLeft, PhoneCall, CalendarClock, History, Check, MessageSquare, Trash2, UserCog, Headphones, Mail, Globe, ExternalLink, Phone, Sparkles, Wand2 } from "lucide-react";
 import { CallModeDrawer } from "@/components/call-mode-drawer";
-import { PitchGeneratorDialog } from "@/components/pitch-generator-dialog";
+// PitchGeneratorDialog déplacé vers la page "Génération d'emails" (centralisé)
 import { InstantPreviewDialog } from "@/components/instant-preview-dialog";
 import { PreviewBriefCard } from "@/components/preview-brief-card";
 import { ProspectBriefingCard } from "@/components/prospect-briefing-card";
@@ -334,20 +334,10 @@ function ProspectDetail() {
               Aperçu Instantané
             </Button>
           </InstantPreviewDialog>
-          {/* Génération de pitch cold ULTRA-personnalisé par IA */}
-          <PitchGeneratorDialog
-            prospectId={prospect.id}
-            prospectEmail={prospect.email}
-          >
-            <Button
-              variant="default"
-              size="sm"
-              className="bg-violet-600 hover:bg-violet-700 text-white"
-            >
-              <Sparkles className="h-4 w-4 mr-1.5" />
-              Pitch IA
-            </Button>
-          </PitchGeneratorDialog>
+          {/* La génération d'emails IA est désormais centralisée dans la
+              page "Génération d'emails" (/templates). On retire le bouton
+              de la fiche prospect pour dissocier GÉNÉRATION (page dédiée,
+              qualité contrôlée) et SUIVI (cette fiche, automatique). */}
           {role === "admin" && (
             <Select value={prospect.owner_id} onValueChange={(v) => reassign.mutate(v)}>
               <SelectTrigger className="w-[180px]">
