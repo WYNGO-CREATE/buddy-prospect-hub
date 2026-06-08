@@ -183,9 +183,10 @@ function StatsView({ scope, userId }: { scope: "mine" | "all"; userId?: string }
           <StatCard icon={PhoneOff} label="Pas encore appelés" value={data.uncalledCount} color="bg-rose-500/15 text-rose-600 dark:text-rose-400" />
           <StatCard
             icon={TrendingUp}
-            label="Taux de couverture"
+            label="Prospects contactés"
             value={`${data.prospects > 0 ? Math.round((data.calledCount / data.prospects) * 100) : 0}%`}
             color="bg-violet-500/15 text-violet-600 dark:text-violet-400"
+            hint="Part de tes prospects appelés au moins une fois"
           />
         </div>
       </div>
