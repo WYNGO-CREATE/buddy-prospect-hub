@@ -27,7 +27,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  Flame, MessageCircle, CalendarClock, AlertTriangle, Briefcase, EyeOff,
+  Flame, MessageCircle, CalendarClock, AlertTriangle, Briefcase, EyeOff, Snowflake,
   Check, ArrowRight, Phone, Mail, ChevronRight, ExternalLink,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
@@ -282,6 +282,36 @@ function CockpitPage() {
     },
   });
 
+  // ─── Q7 : Prospects froids à réveiller (>30j sans aucune interaction) ──
+  //         Combine messages, call_logs et previews via la RPC
+  //         `prospects_last_contact`. Exclut convertis & perdus.
+  const { data: coldProspects } = useQuery({
+    queryKey: ["cockpit-cold", user?.id],
+    enabled: !!user,
+    refetchInterval: 5 * 60_000,
+    queryFn: async () => {
+      const { data: lc } = await supabase.rpc("prospects_last_contact");
+      const cutoff = Date.now() - 30 * DAY_MS;
+      const coldMap = new Map<string, string>();
+      ((lc || []) as Array<{ prospect_id: string; last_contact_at: string }>).forEach((r) => {
+        if (new Date(r.last_contact_at).getTime() < cutoff) {
+          coldMap.set(r.prospect_id, r.last_contact_at);
+        }
+      });
+      if (coldMap.size === 0) return [];
+      const { data } = await supabase
+        .from("prospects")
+        .select("id, first_name, last_name, company, email, phone, status, updated_at")
+        .in("id", Array.from(coldMap.keys()))
+        .not("status", "in", "(converti,perdu)")
+        .eq("owner_id", user!.id);
+      return (data || [])
+        .map((p) => ({ ...p, last_contact_at: coldMap.get(p.id)! }))
+        .sort((a, b) => a.last_contact_at.localeCompare(b.last_contact_at))
+        .slice(0, 20) as Array<Prospect & { last_contact_at: string }>;
+    },
+  });
+
   // ─── Classification des réponses entrantes (positives / négatives / neutres)
   const classifiedReplies = useMemo(() => {
     return (incomingReplies || []).map((r) => ({
@@ -301,7 +331,7 @@ function CockpitPage() {
     (lateProspects?.length || 0) +
     (stuckInterested?.length || 0) +
     (ignoredPreviews?.length || 0) +
-    0; // Section 7 "Refus anciens" retirée
+    (coldProspects?.length || 0);
 
   // ─── Mutations ──────────────────────────────────────────────────────
   const completeFollowUp = useMutation({
@@ -429,8 +459,17 @@ function CockpitPage() {
         contextLabel: `Aperçu envoyé il y a ${formatDistanceToNow(new Date(i.generated_at), { locale: fr })} · 0 vue`,
       });
     });
+    // 8. Prospects froids à réveiller (>30j sans interaction)
+    (coldProspects || []).forEach((p) => {
+      push({
+        key: `cold-${p.id}`,
+        kind: "cold",
+        prospect: p,
+        contextLabel: `Aucune interaction depuis ${formatDistanceToNow(new Date(p.last_contact_at), { locale: fr })}`,
+      });
+    });
     return items;
-  }, [hotPreviews, classifiedReplies, dueFollowUps, lateProspects, stuckInterested, ignoredPreviews]);
+  }, [hotPreviews, classifiedReplies, dueFollowUps, lateProspects, stuckInterested, ignoredPreviews, coldProspects]);
 
   const [sessionOpen, setSessionOpen] = useState(false);
 
@@ -661,6 +700,42 @@ function CockpitPage() {
                 <a href={`tel:${p.phone}`}><Phone className="h-3 w-3" /> Relancer</a>
               </Button>
             )}
+          />
+        ))}
+      </Section>
+
+      {/* ─── SECTION 7 : Prospects froids à réveiller ─── */}
+      <Section
+        icon={<Snowflake className="h-5 w-5" />}
+        tone="cyan"
+        title="Prospects froids à réveiller"
+        subtitle="Aucune interaction depuis plus de 30 jours — un appel, un email, et ils repartent"
+        count={coldProspects?.length || 0}
+        empty="Aucun prospect froid — tu gardes le lien avec tout le monde 💪"
+      >
+        {(coldProspects || []).map((p) => (
+          <Item
+            key={p.id}
+            prospect={p}
+            meta={
+              <span className="text-xs text-cyan-700 dark:text-cyan-300">
+                ❄️ Sans contact depuis {formatDistanceToNow(new Date(p.last_contact_at), { locale: fr })}
+              </span>
+            }
+            actions={
+              <>
+                {p.phone && (
+                  <Button size="sm" variant="default" asChild className="gap-1 bg-cyan-600 hover:bg-cyan-700">
+                    <a href={`tel:${p.phone}`}><Phone className="h-3 w-3" /> Appeler</a>
+                  </Button>
+                )}
+                {p.email && !p.phone && (
+                  <Button size="sm" variant="outline" asChild className="gap-1">
+                    <a href={`mailto:${p.email}`}><Mail className="h-3 w-3" /> Email</a>
+                  </Button>
+                )}
+              </>
+            }
           />
         ))}
       </Section>

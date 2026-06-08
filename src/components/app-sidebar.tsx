@@ -7,7 +7,6 @@ import {
   UserCog,
   LogOut,
   Kanban,
-  Snowflake,
   User,
   Inbox,
   Sparkles,
@@ -69,28 +68,9 @@ export function AppSidebar() {
     },
   });
 
-  // Badge: prospects froids (>30j sans contact, hors converti/perdu)
-  const { data: coldCount = 0 } = useQuery({
-    queryKey: ["cold-count", user?.id],
-    enabled: !!user,
-    refetchInterval: 5 * 60_000,
-    queryFn: async () => {
-      const { data: lc } = await supabase.rpc("prospects_last_contact");
-      const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
-      const coldIds = new Set(
-        ((lc || []) as Array<{ prospect_id: string; last_contact_at: string }>)
-          .filter((r) => new Date(r.last_contact_at).getTime() < cutoff)
-          .map((r) => r.prospect_id),
-      );
-      if (coldIds.size === 0) return 0;
-      const { data } = await supabase
-        .from("prospects")
-        .select("id, status")
-        .in("id", Array.from(coldIds))
-        .not("status", "in", "(converti,perdu)");
-      return (data || []).length;
-    },
-  });
+  // La page "Prospects froids" a été supprimée du menu : les prospects froids
+  // (>30j sans interaction) sont désormais intégrés au cockpit /relances et
+  // visibles via le smart-tag "Froid" sur la fiche prospect.
 
   const items: Array<{ title: string; url: string; icon: typeof Users; badge: number }> = [
     { title: "Tableau de bord", url: "/tableau", icon: LayoutDashboard, badge: 0 },
@@ -98,7 +78,6 @@ export function AppSidebar() {
     { title: "Prospects", url: "/prospects", icon: Users, badge: 0 },
     { title: "Pipeline", url: "/pipeline", icon: Kanban, badge: 0 },
     { title: "À faire aujourd'hui", url: "/relances", icon: CalendarClock, badge: dueCount },
-    { title: "Prospects froids", url: "/froids", icon: Snowflake, badge: coldCount },
     { title: "Génération d'emails", url: "/templates", icon: Sparkles, badge: 0 },
     { title: "Scripts d'appel", url: "/scripts", icon: Headphones, badge: 0 },
     { title: "Chasse aux prospects", url: "/chasse", icon: Target, badge: 0 },

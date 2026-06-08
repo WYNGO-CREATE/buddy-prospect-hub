@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Phone, Mail, MessageSquare, Check, SkipForward, X, Flame, MessageCircle,
-  CalendarClock, AlertTriangle, Briefcase, EyeOff, Copy, Trophy, ArrowRight, ExternalLink,
+  CalendarClock, AlertTriangle, Briefcase, EyeOff, Snowflake, Copy, Trophy, ArrowRight, ExternalLink,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -32,7 +32,8 @@ export type SessionItemKind =
   | "followup"    // relance planifiée du jour
   | "late_call"   // jamais appelé / silence > 14j
   | "stuck"       // intéressé sans suite
-  | "ignored";    // aperçu envoyé non ouvert
+  | "ignored"     // aperçu envoyé non ouvert
+  | "cold";       // sans interaction depuis >30j (à réveiller)
 
 const KIND_META: Record<SessionItemKind, { label: string; icon: React.ElementType; tone: string; suggestionPrefix: string }> = {
   hot: {
@@ -70,6 +71,12 @@ const KIND_META: Record<SessionItemKind, { label: string; icon: React.ElementTyp
     icon: EyeOff,
     tone: "bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-400",
     suggestionPrefix: "Je vous avais envoyé un aperçu, vous l'avez peut-être manqué",
+  },
+  cold: {
+    label: "Prospect froid",
+    icon: Snowflake,
+    tone: "bg-cyan-100 dark:bg-cyan-950/40 text-cyan-700 dark:text-cyan-300",
+    suggestionPrefix: "Ça fait un moment qu'on ne s'est pas parlé, je voulais reprendre contact",
   },
 };
 
