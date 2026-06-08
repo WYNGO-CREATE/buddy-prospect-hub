@@ -81,13 +81,15 @@ export function AppSidebar() {
     { title: "Génération d'emails", url: "/templates", icon: Sparkles, badge: 0 },
     { title: "Scripts d'appel", url: "/scripts", icon: Headphones, badge: 0 },
     { title: "Chasse aux prospects", url: "/chasse", icon: Target, badge: 0 },
-    { title: "Mon profil", url: "/profil", icon: User, badge: 0 },
   ];
   if (role === "admin") {
     items.push({ title: "Équipe", url: "/equipe", icon: UserCog, badge: 0 });
-    // Le Journal d'activité est désormais intégré au Tableau de bord
-    // (onglet "Vue équipe") — plus besoin d'item séparé dans le menu.
   }
+  // Mon profil placé après Équipe (admin) pour respecter l'ordre :
+  // outils opérationnels → admin équipe → préférences perso.
+  items.push({ title: "Mon profil", url: "/profil", icon: User, badge: 0 });
+  // Le Journal d'activité est désormais intégré au Tableau de bord
+  // (onglet "Vue équipe") — plus besoin d'item séparé dans le menu.
 
   return (
     <Sidebar collapsible="icon">
