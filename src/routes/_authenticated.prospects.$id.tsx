@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { ArrowLeft, PhoneCall, CalendarClock, History, Check, MessageSquare, Trash2, UserCog, Headphones, Mail, Globe, ExternalLink, Phone, Sparkles, Wand2 } from "lucide-react";
-import { CallModeDrawer } from "@/components/call-mode-drawer";
+// CallModeDrawer déplacé : Mode appel centralisé sur /scripts (CallLauncherForProspect)
 // PitchGeneratorDialog déplacé vers la page "Génération d'emails" (centralisé)
 import { InstantPreviewDialog } from "@/components/instant-preview-dialog";
 import { PreviewBriefCard } from "@/components/preview-brief-card";
@@ -41,7 +41,6 @@ function ProspectDetail() {
   const [callOpen, setCallOpen] = useState(false);
   const [followOpen, setFollowOpen] = useState(false);
   const [comment, setComment] = useState("");
-  const [callDrawerOpen, setCallDrawerOpen] = useState(false);
 
   const { data: prospect, isLoading } = useQuery({
     queryKey: ["prospect", id],
@@ -310,17 +309,10 @@ function ProspectDetail() {
           </div>
         </div>
         <div className="flex gap-2 items-center">
-          {/* Mode appel : drawer latéral avec scripts + banque d'objections,
-              variables remplies à la volée avec les infos du prospect. */}
-          <Button
-            variant="default"
-            size="sm"
-            onClick={() => setCallDrawerOpen(true)}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white"
-          >
-            <Headphones className="h-4 w-4 mr-1.5" />
-            Mode appel
-          </Button>
+          {/* Le Mode appel est désormais centralisé sur la page "Scripts d'appel".
+              Voir CallLauncherForProspect — flux : sélectionne prospect → démarrer.
+              On retire le bouton de la fiche prospect pour cohérence avec la
+              centralisation des outils (comme on a fait pour les emails). */}
           {/* ⚡ APERÇU INSTANTANÉ : génère un vrai site web preview pour le prospect en 15s.
               Le commercial copie le lien et l'envoie par SMS pendant l'appel : effet wahou
               garanti, plus aucune objection "je vois pas ce que ça donnerait". */}
@@ -910,18 +902,7 @@ function ProspectDetail() {
         </TabsContent>
       </Tabs>
 
-      {/* Drawer Mode appel — variables remplies avec ce prospect */}
-      <CallModeDrawer
-        prospect={prospect ? {
-          id: prospect.id,
-          first_name: prospect.first_name,
-          last_name: prospect.last_name,
-          company: prospect.company,
-          email: prospect.email,
-        } : null}
-        open={callDrawerOpen}
-        onOpenChange={setCallDrawerOpen}
-      />
+      {/* CallModeDrawer retiré — Mode appel centralisé sur la page /scripts */}
     </div>
   );
 }

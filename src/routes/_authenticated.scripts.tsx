@@ -13,6 +13,8 @@ import { Phone, Plus, Pencil, Trash2, Sparkles, MessageSquareWarning, Users, Use
 import { toast } from "sonner";
 import { AVAILABLE_VARS } from "@/lib/render-template";
 import { REFERENCE_CALL_SCRIPT, REFERENCE_OBJECTIONS } from "@/lib/call-scripts-seed";
+import { CallLauncherForProspect } from "@/components/call-launcher-for-prospect";
+import { CallPhilosophyCard } from "@/components/call-philosophy-card";
 
 export const Route = createFileRoute("/_authenticated/scripts")({
   component: ScriptsPage,
@@ -51,7 +53,7 @@ const OBJECTION_CATEGORIES = [
 ];
 
 function ScriptsPage() {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const qc = useQueryClient();
   const [tab, setTab] = useState<"script" | "objection">("script");
   const [editing, setEditing] = useState<CallScript | null>(null);
@@ -124,10 +126,10 @@ function ScriptsPage() {
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Phone className="h-6 w-6 text-primary" />
-            Scripts d'appel & objections
+            Scripts d'appel
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Vos scripts d'ouverture et la banque de réponses aux objections — utilisables en direct depuis la fiche d'un prospect (bouton <strong>Mode appel</strong>).
+            Centre des appels : démarre un Mode appel pour un prospect, gère ta bibliothèque de scripts d'ouverture & objections, configure la philosophie de vente que l'IA doit respecter.
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -156,26 +158,11 @@ function ScriptsPage() {
         </div>
       </div>
 
-      {/* Variables dispo */}
-      <Card className="bg-muted/30">
-        <CardContent className="p-4">
-          <p className="text-xs font-medium text-muted-foreground mb-2">VARIABLES DISPONIBLES EN MODE APPEL</p>
-          <div className="flex flex-wrap gap-2">
-            {AVAILABLE_VARS.map((v) => (
-              <code
-                key={v.key}
-                className="text-xs bg-background border px-2 py-1 rounded font-mono"
-                title={v.label}
-              >
-                {`{{${v.key}}}`}
-              </code>
-            ))}
-          </div>
-          <p className="text-[11px] text-muted-foreground mt-2">
-            Au démarrage du Mode appel, ces variables sont remplacées par les vraies infos du prospect (prénom, entreprise, etc.).
-          </p>
-        </CardContent>
-      </Card>
+      {/* ═══ DÉMARRER UN APPEL pour un prospect (centralisé) ═══ */}
+      <CallLauncherForProspect />
+
+      {/* ═══ PHILOSOPHIE de vente — injectée dans le prompt IA ═══ */}
+      <CallPhilosophyCard isAdmin={role === "admin"} />
 
       {/* Tabs */}
       <div className="inline-flex rounded-md border bg-card overflow-hidden">

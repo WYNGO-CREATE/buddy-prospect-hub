@@ -46,7 +46,7 @@ Ton métier : transcrire fidèlement la voix d'une agence existante en scripts d
 ╔════════════════════════════════════════════════════════════════════╗
 ║  CONTEXTE DE L'AGENCE — TU DOIS L'UTILISER, PAS L'IGNORER         ║
 ╠════════════════════════════════════════════════════════════════════╣
-${ctx.agencyName ? `║  Nom : ${ctx.agencyName}\n` : ""}${ctx.activity ? `║  Activité : ${ctx.activity}\n` : ""}${ctx.businessBrief ? `║\n║  ─── DESCRIPTION DÉTAILLÉE (la vraie identité de l'agence) ───\n║  ${ctx.businessBrief.replace(/\n/g, "\n║  ")}\n` : ""}${ctx.targetClient ? `║\n║  ─── CLIENT CIBLE ───\n║  ${ctx.targetClient.replace(/\n/g, "\n║  ")}\n` : ""}${ctx.valueProps ? `║\n║  ─── PROPOSITIONS DE VALEUR (à intégrer SANS LES PARAPHRASER) ───\n║  ${ctx.valueProps.replace(/\n/g, "\n║  ")}\n` : ""}╚════════════════════════════════════════════════════════════════════╝
+${ctx.agencyName ? `║  Nom : ${ctx.agencyName}\n` : ""}${ctx.activity ? `║  Activité : ${ctx.activity}\n` : ""}${ctx.businessBrief ? `║\n║  ─── DESCRIPTION DÉTAILLÉE (la vraie identité de l'agence) ───\n║  ${ctx.businessBrief.replace(/\n/g, "\n║  ")}\n` : ""}${ctx.targetClient ? `║\n║  ─── CLIENT CIBLE ───\n║  ${ctx.targetClient.replace(/\n/g, "\n║  ")}\n` : ""}${ctx.valueProps ? `║\n║  ─── PROPOSITIONS DE VALEUR (à intégrer SANS LES PARAPHRASER) ───\n║  ${ctx.valueProps.replace(/\n/g, "\n║  ")}\n` : ""}${ctx.philosophy ? `║\n║  ─── PHILOSOPHIE DE VENTE DU FONDATEUR (RESPECTE-LA À LA LETTRE) ───\n║  ${ctx.philosophy.replace(/\n/g, "\n║  ")}\n` : ""}${ctx.callDos ? `║\n║  ─── TOUJOURS FAIRE (règles d'or de l'agence) ───\n║  ${ctx.callDos.replace(/\n/g, "\n║  ")}\n` : ""}${ctx.callDonts ? `║\n║  ─── INTERDICTIONS ABSOLUES (rouges de l'agence) ───\n║  ${ctx.callDonts.replace(/\n/g, "\n║  ")}\n` : ""}╚════════════════════════════════════════════════════════════════════╝
 
 ═══ MÉTHODE WYNGO — 5 PHASES (squelette des scripts d'ouverture longs) ═══
 
@@ -136,7 +136,7 @@ function buildSystemPromptObjection(ctx: any): string {
 ╔════════════════════════════════════════════════════════════════════╗
 ║  CONTEXTE DE L'AGENCE — À UTILISER, PAS À IGNORER                 ║
 ╠════════════════════════════════════════════════════════════════════╣
-${ctx.agencyName ? `║  Nom : ${ctx.agencyName}\n` : ""}${ctx.activity ? `║  Activité : ${ctx.activity}\n` : ""}${ctx.businessBrief ? `║\n║  ${ctx.businessBrief.replace(/\n/g, "\n║  ")}\n` : ""}${ctx.valueProps ? `║\n║  ─── PROPOSITIONS DE VALEUR (à mobiliser dans les preuves) ───\n║  ${ctx.valueProps.replace(/\n/g, "\n║  ")}\n` : ""}╚════════════════════════════════════════════════════════════════════╝
+${ctx.agencyName ? `║  Nom : ${ctx.agencyName}\n` : ""}${ctx.activity ? `║  Activité : ${ctx.activity}\n` : ""}${ctx.businessBrief ? `║\n║  ${ctx.businessBrief.replace(/\n/g, "\n║  ")}\n` : ""}${ctx.valueProps ? `║\n║  ─── PROPOSITIONS DE VALEUR (à mobiliser dans les preuves) ───\n║  ${ctx.valueProps.replace(/\n/g, "\n║  ")}\n` : ""}${ctx.philosophy ? `║\n║  ─── PHILOSOPHIE DE VENTE DU FONDATEUR (cadre la réponse) ───\n║  ${ctx.philosophy.replace(/\n/g, "\n║  ")}\n` : ""}${ctx.callDonts ? `║\n║  ─── INTERDICTIONS (ne jamais dire ça) ───\n║  ${ctx.callDonts.replace(/\n/g, "\n║  ")}\n` : ""}╚════════════════════════════════════════════════════════════════════╝
 
 ═══ MÉCANIQUE EN 4 TEMPS (à suivre obligatoirement) ═══
 
@@ -333,7 +333,7 @@ Deno.serve(async (req) => {
 
     const { data: agency } = await admin
       .from("agency_settings")
-      .select("name, activity, business_brief, target_client, value_props, default_tone")
+      .select("name, activity, business_brief, target_client, value_props, default_tone, philosophy, call_dos, call_donts")
       .eq("id", true)
       .maybeSingle();
 
@@ -344,11 +344,16 @@ Deno.serve(async (req) => {
           businessBrief: agency?.business_brief,
           targetClient:  agency?.target_client,
           valueProps:    agency?.value_props,
+          philosophy:    agency?.philosophy,
+          callDos:       agency?.call_dos,
+          callDonts:     agency?.call_donts,
         })
       : buildSystemPromptObjection({
           agencyName:    agency?.name,
           activity:      agency?.activity,
           businessBrief: agency?.business_brief,
+          philosophy:    agency?.philosophy,
+          callDonts:     agency?.call_donts,
         });
 
     const userPrompt = buildUserPrompt(input);
