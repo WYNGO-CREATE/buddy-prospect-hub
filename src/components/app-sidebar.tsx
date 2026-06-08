@@ -8,7 +8,6 @@ import {
   LogOut,
   Kanban,
   Snowflake,
-  Activity,
   User,
   Inbox,
   Sparkles,
@@ -107,7 +106,8 @@ export function AppSidebar() {
   ];
   if (role === "admin") {
     items.push({ title: "Équipe", url: "/equipe", icon: UserCog, badge: 0 });
-    items.push({ title: "Journal d'activité", url: "/logs", icon: Activity, badge: 0 });
+    // Le Journal d'activité est désormais intégré au Tableau de bord
+    // (onglet "Vue équipe") — plus besoin d'item séparé dans le menu.
   }
 
   return (
