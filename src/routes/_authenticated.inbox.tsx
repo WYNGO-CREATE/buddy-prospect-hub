@@ -113,6 +113,17 @@ function InboxPage() {
   // Filtre direction/orphelin : "all" | "inbound" | "outbound" | "unattached"
   const [boxFilter, setBoxFilter] = useState<"all" | "inbound" | "outbound" | "unattached">("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Sélection multiple pour actions en masse (supprimer, archiver)
+  const [bulkSelection, setBulkSelection] = useState<Set<string>>(new Set());
+  const toggleBulk = (id: string) => {
+    setBulkSelection((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const clearBulk = () => setBulkSelection(new Set());
   const [composeOpen, setComposeOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
@@ -253,6 +264,52 @@ function InboxPage() {
       setSelectedId(null);
     },
     onError: (e: Error) => toast.error("Suppression échouée", { description: e.message }),
+  });
+
+  // ─── BULK : suppression de plusieurs messages d'un coup ──────────────
+  const bulkDelete = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const { error } = await supabase.from("messages").delete().in("id", ids);
+      if (error) throw error;
+    },
+    onSuccess: (_, ids) => {
+      qc.invalidateQueries({ queryKey: ["inbox-messages"] });
+      qc.invalidateQueries({ queryKey: ["inbox-unread"] });
+      qc.invalidateQueries({ queryKey: ["inbox-counts"] });
+      toast.success(`${ids.length} message${ids.length > 1 ? "s" : ""} supprimé${ids.length > 1 ? "s" : ""}`);
+      clearBulk();
+      setSelectedId(null);
+    },
+    onError: (e: Error) => toast.error("Suppression en masse échouée", { description: e.message }),
+  });
+
+  // ─── BULK : archiver plusieurs messages d'un coup ────────────────────
+  const bulkArchive = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const { error } = await supabase.from("messages").update({ is_archived: true }).in("id", ids);
+      if (error) throw error;
+    },
+    onSuccess: (_, ids) => {
+      qc.invalidateQueries({ queryKey: ["inbox-messages"] });
+      qc.invalidateQueries({ queryKey: ["inbox-unread"] });
+      qc.invalidateQueries({ queryKey: ["inbox-counts"] });
+      toast.success(`${ids.length} message${ids.length > 1 ? "s" : ""} archivé${ids.length > 1 ? "s" : ""}`);
+      clearBulk();
+    },
+    onError: (e: Error) => toast.error("Archivage en masse échoué", { description: e.message }),
+  });
+
+  // ─── BULK : marquer plusieurs messages comme lus ─────────────────────
+  const bulkMarkRead = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const { error } = await supabase.from("messages").update({ is_read: true }).in("id", ids);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["inbox-messages"] });
+      qc.invalidateQueries({ queryKey: ["inbox-unread"] });
+      clearBulk();
+    },
   });
 
   const stats = useMemo(() => {
@@ -513,12 +570,77 @@ function InboxPage() {
       <div className="grid lg:grid-cols-[minmax(320px,420px)_1fr] gap-4 min-h-[60vh]">
         {/* Liste */}
         <Card className="overflow-hidden">
-          <div className="border-b px-3 py-2 text-xs font-medium text-muted-foreground flex items-center justify-between bg-muted/30">
-            <span>{filtered.length} message{filtered.length > 1 ? "s" : ""}</span>
-            {stats.unread > 0 && statusFilter !== "archived" && (
-              <span className="text-primary font-semibold">{stats.unread} non lu{stats.unread > 1 ? "s" : ""}</span>
-            )}
-          </div>
+          {/* ─── Barre d'actions BULK : visible quand au moins 1 message coché ─── */}
+          {bulkSelection.size > 0 ? (
+            <div className="border-b px-3 py-2 bg-primary/10 dark:bg-primary/20 flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={bulkSelection.size === filtered.length && filtered.length > 0}
+                  ref={(el) => {
+                    if (el) el.indeterminate = bulkSelection.size > 0 && bulkSelection.size < filtered.length;
+                  }}
+                  onChange={() => {
+                    if (bulkSelection.size === filtered.length) clearBulk();
+                    else setBulkSelection(new Set(filtered.map((m) => m.id)));
+                  }}
+                  className="size-4 cursor-pointer accent-primary"
+                  aria-label="Tout sélectionner"
+                />
+                <span className="text-xs font-semibold text-primary">
+                  {bulkSelection.size} sélectionné{bulkSelection.size > 1 ? "s" : ""}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => bulkMarkRead.mutate(Array.from(bulkSelection))}
+                  disabled={bulkMarkRead.isPending}
+                  className="h-7 text-xs gap-1"
+                >
+                  <CircleDot className="h-3 w-3" /> Lu
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => bulkArchive.mutate(Array.from(bulkSelection))}
+                  disabled={bulkArchive.isPending}
+                  className="h-7 text-xs gap-1"
+                >
+                  <Archive className="h-3 w-3" /> Archiver
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => {
+                    if (confirm(`Supprimer définitivement ces ${bulkSelection.size} message(s) ?\n\nCette action est irréversible.`)) {
+                      bulkDelete.mutate(Array.from(bulkSelection));
+                    }
+                  }}
+                  disabled={bulkDelete.isPending}
+                  className="h-7 text-xs gap-1"
+                >
+                  <Trash2 className="h-3 w-3" /> Supprimer
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={clearBulk}
+                  className="h-7 text-xs"
+                >
+                  Annuler
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="border-b px-3 py-2 text-xs font-medium text-muted-foreground flex items-center justify-between bg-muted/30">
+              <span>{filtered.length} message{filtered.length > 1 ? "s" : ""}</span>
+              {stats.unread > 0 && statusFilter !== "archived" && (
+                <span className="text-primary font-semibold">{stats.unread} non lu{stats.unread > 1 ? "s" : ""}</span>
+              )}
+            </div>
+          )}
           <div className="divide-y max-h-[70vh] overflow-y-auto">
             {isLoading ? (
               <div className="p-8 text-center text-sm text-muted-foreground">Chargement…</div>
@@ -533,6 +655,8 @@ function InboxPage() {
                   key={m.id}
                   message={m}
                   isSelected={selectedId === m.id}
+                  isChecked={bulkSelection.has(m.id)}
+                  onCheck={() => toggleBulk(m.id)}
                   onSelect={() => {
                     setSelectedId(m.id);
                     if (!m.is_read) toggleRead.mutate({ id: m.id, is_read: true });
@@ -583,10 +707,14 @@ function InboxPage() {
 function MessageRow({
   message,
   isSelected,
+  isChecked,
+  onCheck,
   onSelect,
 }: {
   message: EnrichedMessage;
   isSelected: boolean;
+  isChecked: boolean;
+  onCheck: () => void;
   onSelect: () => void;
 }) {
   const meta = CHANNEL_META[message.channel];
@@ -610,18 +738,38 @@ function MessageRow({
   const isOrphan = !message.prospect_id;
 
   return (
-    <button
+    <div
       onClick={onSelect}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === "Enter") onSelect(); }}
       className={cn(
-        "w-full text-left px-4 py-3 hover:bg-muted/50 transition relative",
+        "group w-full text-left px-4 py-3 hover:bg-muted/50 transition relative cursor-pointer",
         isSelected && "bg-muted",
-        !message.is_read && "bg-primary/[0.03]",
+        isChecked && "bg-primary/[0.08]",
+        !message.is_read && !isChecked && "bg-primary/[0.03]",
       )}
     >
       {!message.is_read && (
         <span className="absolute left-1.5 top-1/2 -translate-y-1/2 size-1.5 rounded-full bg-primary" />
       )}
       <div className="flex items-start gap-3 pl-2">
+        {/* Checkbox multi-sélection (toujours visible si coché, sinon au hover) */}
+        <label
+          className={cn(
+            "flex-shrink-0 mt-2 cursor-pointer transition-opacity",
+            isChecked ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+          )}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <input
+            type="checkbox"
+            checked={isChecked}
+            onChange={onCheck}
+            className="size-4 rounded border-input cursor-pointer accent-primary"
+            aria-label="Sélectionner ce message"
+          />
+        </label>
         <div className={cn("size-9 rounded-lg flex items-center justify-center flex-shrink-0", meta.tone)}>
           <Icon className="h-4 w-4" />
         </div>
@@ -658,7 +806,7 @@ function MessageRow({
           </p>
         </div>
       </div>
-    </button>
+    </div>
   );
 }
 
