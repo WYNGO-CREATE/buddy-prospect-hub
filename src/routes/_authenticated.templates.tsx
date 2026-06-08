@@ -90,7 +90,7 @@ function TemplatesPage() {
         <div className="flex gap-2">
           <Button variant="default" onClick={() => setAiOpen(true)} className="bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-700 hover:to-fuchsia-700 text-white">
             <Wand2 className="h-4 w-4 mr-1.5" />
-            Générer avec l'IA
+            Générer
           </Button>
           <Button variant="outline" onClick={() => setCreating(true)}>
             <Plus className="h-4 w-4 mr-1.5" />
@@ -461,7 +461,7 @@ function AIGenerateDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Wand2 className="h-5 w-5 text-violet-600" />
-            Générer un template avec l'IA
+            Générer un template
           </DialogTitle>
           <DialogDescription>
             Décris l'objectif et le contexte. L'IA s'appuiera sur le contexte de ton agence pour rédiger un email pro.

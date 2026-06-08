@@ -76,7 +76,7 @@ export function EmailGeneratorForProspect() {
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2">
           <Mail className="h-5 w-5 text-violet-600" />
-          Générer un email IA pour un prospect
+          Générer un email pour un prospect
         </CardTitle>
         <CardDescription>
           Sélectionne un prospect, l'IA Wyngo génère un email cold ULTRA-personnalisé
@@ -183,7 +183,7 @@ export function EmailGeneratorForProspect() {
             >
               <Button className="w-full bg-violet-600 hover:bg-violet-700 text-white gap-2">
                 <Mail className="h-4 w-4" />
-                Générer l'email IA personnalisé
+                Générer l'email
               </Button>
             </PitchGeneratorDialog>
 
