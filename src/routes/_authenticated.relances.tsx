@@ -18,7 +18,9 @@
 
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { CockpitDailyHeader } from "@/components/cockpit-daily-header";
+import { CockpitSessionMode, type SessionItem } from "@/components/cockpit-session-mode";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -341,20 +343,119 @@ function CockpitPage() {
   });
 
 
+  // ─── Construction de la queue pour le Mode Session ───
+  //   On combine toutes les sections (chauds → échanges → relances →
+  //   en retard → intéressés sans suite → aperçus non ouverts) en une
+  //   liste unique, dédupliquée par prospect_id (un même prospect peut
+  //   apparaître dans plusieurs sections, on le présente UNE SEULE FOIS
+  //   dans la session avec le contexte le plus prioritaire).
+  const sessionQueue: SessionItem[] = useMemo(() => {
+    const seen = new Set<string>();
+    const items: SessionItem[] = [];
+    const push = (item: SessionItem) => {
+      if (!item.prospect?.id || seen.has(item.prospect.id)) return;
+      seen.add(item.prospect.id);
+      items.push(item);
+    };
+    // 1. Chauds (prio max)
+    (hotPreviews || []).forEach((h) => {
+      if (!h.prospects) return;
+      push({
+        key: `hot-${h.id}`,
+        kind: "hot",
+        prospect: h.prospects,
+        contextLabel: `Aperçu vu ${h.view_count}× · dernière ouverture il y a ${formatDistanceToNow(new Date(h.opened_at), { locale: fr })}`,
+      });
+    });
+    // 2. Échanges positifs (signal d'achat)
+    classifiedReplies.filter((r) => r.tone === "positive").forEach((r) => {
+      if (!r.prospects) return;
+      push({
+        key: `pos-${r.id}`,
+        kind: "reply",
+        prospect: r.prospects,
+        contextLabel: "Signal d'achat détecté",
+        excerpt: r.content.slice(0, 180),
+      });
+    });
+    // 3. Relances planifiées du jour
+    (dueFollowUps || []).forEach((f) => {
+      if (!f.prospects) return;
+      push({
+        key: `fu-${f.id}`,
+        kind: "followup",
+        prospect: f.prospects,
+        contextLabel: f.reason || `Relance prévue ${format(new Date(f.scheduled_at), "PPp", { locale: fr })}`,
+      });
+    });
+    // 4. À analyser (réponses neutres)
+    classifiedReplies.filter((r) => r.tone === "neutral").forEach((r) => {
+      if (!r.prospects) return;
+      push({
+        key: `neu-${r.id}`,
+        kind: "reply",
+        prospect: r.prospects,
+        contextLabel: "Réponse à analyser",
+        excerpt: r.content.slice(0, 180),
+      });
+    });
+    // 5. En retard d'appel
+    (lateProspects || []).slice(0, 15).forEach((p) => {
+      push({
+        key: `late-${p.id}`,
+        kind: "late_call",
+        prospect: p,
+        contextLabel: p.last_called_at
+          ? `Pas appelé depuis ${formatDistanceToNow(new Date(p.last_called_at), { locale: fr })}`
+          : "Jamais contacté",
+      });
+    });
+    // 6. Intéressés sans suite
+    (stuckInterested || []).forEach((p) => {
+      push({
+        key: `stuck-${p.id}`,
+        kind: "stuck",
+        prospect: p,
+        contextLabel: `Statut Intéressé · sans suite depuis ${formatDistanceToNow(new Date(p.updated_at), { locale: fr })}`,
+      });
+    });
+    // 7. Aperçus non ouverts
+    (ignoredPreviews || []).forEach((i) => {
+      if (!i.prospects) return;
+      push({
+        key: `ign-${i.id}`,
+        kind: "ignored",
+        prospect: i.prospects,
+        contextLabel: `Aperçu envoyé il y a ${formatDistanceToNow(new Date(i.generated_at), { locale: fr })} · 0 vue`,
+      });
+    });
+    return items;
+  }, [hotPreviews, classifiedReplies, dueFollowUps, lateProspects, stuckInterested, ignoredPreviews]);
+
+  const [sessionOpen, setSessionOpen] = useState(false);
+
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      {/* Header */}
-      <div>
-        <div className="flex items-baseline justify-between flex-wrap gap-2">
-          <h1 className="text-3xl font-bold">À faire aujourd'hui</h1>
-          <p className="text-sm text-muted-foreground">{format(now(), "EEEE d MMMM yyyy", { locale: fr })}</p>
-        </div>
-        <p className="text-muted-foreground mt-1">
-          {totalTodo === 0
-            ? "🎉 Tu es à jour, plus rien à faire ! Lance une nouvelle chasse ?"
-            : `${totalTodo} action${totalTodo > 1 ? "s" : ""} en attente — classées par priorité`}
-        </p>
-      </div>
+      {/* ═══ HEADER gamifié : score du jour + bouton Démarrer ma session ═══ */}
+      <CockpitDailyHeader
+        hotCount={hotPreviews?.length || 0}
+        totalActions={sessionQueue.length}
+        onStartSession={() => setSessionOpen(true)}
+      />
+
+      {/* ═══ Mode session plein écran ═══ */}
+      <CockpitSessionMode
+        open={sessionOpen}
+        onOpenChange={setSessionOpen}
+        items={sessionQueue}
+      />
+
+      {/* Ligne d'info sous le header */}
+      <p className="text-sm text-muted-foreground">
+        {totalTodo === 0
+          ? "🎉 Tu es à jour, plus rien à faire ! Lance une nouvelle chasse ?"
+          : `${totalTodo} action${totalTodo > 1 ? "s" : ""} en attente — classées par priorité ci-dessous`}
+      </p>
 
       {/* ─── SECTION 1 : Chauds (Aperçu ouvert < 24h) ─── */}
       <Section
