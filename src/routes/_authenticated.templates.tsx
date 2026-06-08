@@ -113,23 +113,10 @@ function TemplatesPage() {
         isAdmin={role === "admin"}
       />
 
-      {/* Variables disponibles */}
-      <Card className="bg-muted/30">
-        <CardContent className="p-4">
-          <p className="text-xs font-medium text-muted-foreground mb-2">VARIABLES DISPONIBLES</p>
-          <div className="flex flex-wrap gap-2">
-            {AVAILABLE_VARS.map((v) => (
-              <code
-                key={v.key}
-                className="text-xs bg-background border px-2 py-1 rounded font-mono"
-                title={v.label}
-              >
-                {`{{${v.key}}}`}
-              </code>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      {/* Le bloc "Variables disponibles" a été retiré du haut de page :
+          il polluait visuellement la nouvelle page "Génération d'emails"
+          alors qu'il n'est utile QUE pendant l'édition d'un template
+          (où les variables apparaissent déjà — voir l'éditeur lignes ~666). */}
 
       {/* Liste */}
       {isLoading ? (
