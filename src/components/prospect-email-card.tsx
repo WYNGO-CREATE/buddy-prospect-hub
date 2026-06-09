@@ -54,10 +54,10 @@ export function ProspectEmailCard({
   });
   const status = (verification?.status as VerifStatus | undefined) ?? null;
 
-  // On autorise le clic mailto seulement si l'email n'est pas "douteux".
-  // - valide / à risque / pas encore vérifié (null) → cliquable
-  // - "à tester" (unknown) / invalide → NON cliquable (pas de redirection)
-  const isUnsafe = status === "unknown" || status === "invalid";
+  // Les emails enregistrés sont toujours RÉELS (scrapés/saisis/validés) —
+  // on ne stocke plus aucune devinette. Donc on autorise le clic, SAUF
+  // si Captain Verify a formellement dit "invalide" (l'adresse n'existe pas).
+  const isUnsafe = status === "invalid";
   const clickable = !!email && !isUnsafe;
 
   const baseClass = "flex items-center gap-3 p-3 rounded-lg border transition";
@@ -71,9 +71,9 @@ export function ProspectEmailCard({
         <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Email</p>
         <p className="font-semibold truncate">{prospect.email || "Non renseigné"}</p>
         {isUnsafe && (
-          <p className="text-[10px] text-sky-600 dark:text-sky-400 inline-flex items-center gap-1 mt-0.5">
+          <p className="text-[10px] text-rose-600 dark:text-rose-400 inline-flex items-center gap-1 mt-0.5">
             <Ban className="h-2.5 w-2.5" />
-            {status === "invalid" ? "Adresse invalide — non cliquable" : "Non confirmée — vérifie avant d'écrire"}
+            Adresse invalide — ne pas écrire
           </p>
         )}
       </div>

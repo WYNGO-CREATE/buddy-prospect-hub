@@ -393,24 +393,49 @@ async function discoverByDomain(
     return { candidates: [], live_domains: [], checked_domains: domains.length };
   }
 
-  // 2. Sur les domaines vivants → patterns → verify (budget crédits serré)
   const found: Candidate[] = [];
+
+  // ─── ÉTAPE A : SCRAPER le vrai site de chaque domaine MX-vivant ────
+  // Un domaine qui reçoit du mail a très souvent un site (même minimal)
+  // avec une page contact/mentions légales où l'email RÉEL est publié.
+  // website-checker a pu le rater (trop strict) → on tente directement.
+  // => On récupère un VRAI email publié, pas une devinette.
+  for (const domain of liveDomains.slice(0, 4)) {
+    for (const url of [`https://www.${domain}`, `https://${domain}`]) {
+      const r = await invokeEdge<{ email?: string; all_emails?: string[] }>("email-scraper", { url });
+      const emails = [r?.email, ...(r?.all_emails || [])]
+        .filter(Boolean)
+        .map((e) => normEmail(e as string))
+        .filter(isPlausibleEmail);
+      // Priorité aux emails sur LE domaine du prospect (les + sûrs)
+      const onDomain = emails.filter((e) => e.endsWith(`@${domain}`));
+      const picks = onDomain.length > 0 ? onDomain : emails;
+      for (const e of picks) {
+        if (!found.some((c) => c.email === e)) {
+          found.push({ email: e, source: "domain_discovery", status: "not_verified", confidence: onDomain.includes(e) ? 92 : 70 });
+        }
+      }
+      if (found.length > 0) break;
+    }
+    if (found.length > 0) break;
+  }
+  if (found.length > 0) {
+    return { candidates: found, live_domains: liveDomains, checked_domains: domains.length };
+  }
+
+  // ─── ÉTAPE B : Patterns vérifiés — on n'accepte QUE les "valid" ────
+  // Captain Verify "valid" = la boîte mail existe RÉELLEMENT (le serveur
+  // l'a confirmé). C'est un vrai email, pas une devinette. On REFUSE les
+  // "unknown" (non confirmé) et les "risky"/catch-all (incertain).
   let credits = 0;
   const MAX_CREDITS = 6;
-  // Fallback : si aucun pattern n'est "valid"/"risky" mais qu'un domaine
-  // reçoit bien du mail (MX confirmé), on propose quand même contact@domaine
-  // en "à tester" — c'est l'adresse standard d'une TPE FR.
-  let unknownFallback: Candidate | null = null;
-
   for (const domain of liveDomains) {
     const patterns: string[] = [];
     if (firstName && lastName) {
       patterns.push(...generatePatterns(firstName, lastName, domain).slice(0, 3));
     }
     patterns.push(`contact@${domain}`, `info@${domain}`);
-    const uniq = Array.from(new Set(patterns));
-
-    for (const p of uniq) {
+    for (const p of Array.from(new Set(patterns))) {
       if (credits >= MAX_CREDITS) break;
       const status = await verifyEmail(p, authHeader);
       credits += 1;
@@ -418,21 +443,13 @@ async function discoverByDomain(
         found.push({ email: p, source: "domain_discovery", status: "valid", confidence: 95 });
         return { candidates: found, live_domains: liveDomains, checked_domains: domains.length };
       }
-      if (status === "risky") {
-        found.push({ email: p, source: "domain_discovery", status: "risky", confidence: 65 });
-        break; // catch-all : contact@ est aussi bon qu'un autre
-      }
-      // garde le 1er contact@/info@ "à tester" sur un domaine MX confirmé
-      if (status === "unknown" && !unknownFallback && /^(contact|info)@/.test(p)) {
-        unknownFallback = { email: p, source: "domain_discovery", status: "unknown", confidence: 50 };
-      }
+      // "unknown" / "risky" / "invalid" → on NE garde RIEN (pas de devinette)
     }
     if (credits >= MAX_CREDITS) break;
-    if (found.length > 0) break;
   }
 
-  if (found.length === 0 && unknownFallback) found.push(unknownFallback);
-  return { candidates: found, live_domains: liveDomains, checked_domains: domains.length };
+  // Aucun email réel trouvé ni confirmé → on retourne vide (honnêteté).
+  return { candidates: [], live_domains: liveDomains, checked_domains: domains.length };
 }
 
 async function invokeEdgeAuthed<T = unknown>(name: string, body: unknown, authHeader: string): Promise<T | null> {
