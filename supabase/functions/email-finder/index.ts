@@ -52,7 +52,7 @@ const UA_FIREFOX = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.5; rv:127.0) Gecko
 
 type Candidate = {
   email: string;
-  source: "scraper" | "hunter" | "pages_jaunes" | "pattern";
+  source: "scraper" | "hunter" | "web_search" | "pattern";
   status: "valid" | "risky" | "invalid" | "unknown" | "not_verified";
   confidence: number; // 0-100
 };
@@ -115,40 +115,75 @@ async function invokeEdge<T = unknown>(name: string, body: unknown): Promise<T |
   }
 }
 
-// ─── Source 3 : Pages Jaunes ─────────────────────────────────────────
+// ─── Source 3 : Recherche web (DuckDuckGo HTML) ──────────────────────
 /**
- * Recherche le prospect sur Pages Jaunes et tente d'extraire son email
- * depuis la page résultat. Pages Jaunes obfusque parfois les emails dans
- * des attributs `data-pjlb` base64 ou via mailto:.
+ * Recherche l'email du prospect via une requête web ciblée.
+ *
+ * Pourquoi DuckDuckGo HTML et pas Google/Bing/Pages Jaunes :
+ *   - Pages Jaunes : Cloudflare anti-bot bloque toutes les IPs serveur
+ *   - Société.com : pareil
+ *   - Google : bloque les scrapers ou exige reCAPTCHA
+ *   - Bing : tolère mais commence à bloquer en volume
+ *   - DuckDuckGo HTML (https://html.duckduckgo.com/html/) : le + permissif,
+ *     pas d'API key, pas de captcha sur volume modéré
  *
  * Stratégie :
- *   1. Recherche : pagesjaunes.fr/annuaire/chercherlespros?quoiqui=...&ou=...
- *   2. Scan emails directs (mailto:, regex texte)
- *   3. Suit le 1er lien d'établissement et re-scan
+ *   1. Requête ciblée : "Nom Société" "Ville" (contact OR email)
+ *   2. Récupère 10-20 snippets de résultats
+ *   3. Extrait tous les emails apparaissant dans les snippets
+ *   4. Filtre les emails dont le domaine est cohérent (slug entreprise)
+ *      ou qui contiennent le nom du prospect
+ *
+ * Limite : ne trouvera que les emails déjà indexés publiquement sur
+ * Facebook / annuaires / blogs locaux. Mais c'est exactement ce qu'on veut
+ * pour les TPE FR sans site web mais référencées quelque part.
  */
-async function searchPagesJaunes(companyName: string, city: string): Promise<string[]> {
+async function searchWebForEmails(companyName: string, city: string): Promise<string[]> {
   if (!companyName) return [];
   try {
-    const q = new URLSearchParams({ quoiqui: companyName, ou: city || "France" });
-    const url = `https://www.pagesjaunes.fr/annuaire/chercherlespros?${q.toString()}`;
-    const res = await fetchWithTimeout(url, 7000);
+    const slug = slugifyCompany(companyName).replace(/-/g, " ");
+    // Requête : "boulangerie martin" "lyon" (email OR contact)
+    const queryParts = [`"${companyName}"`];
+    if (city) queryParts.push(`"${city}"`);
+    queryParts.push("(email OR contact OR mail)");
+    const q = queryParts.join(" ");
+
+    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`;
+    const res = await fetchWithTimeout(url, 8000);
     if (!res.ok) return [];
     const html = await res.text();
 
+    // DuckDuckGo HTML retourne les snippets dans des <a class="result__snippet">…</a>
+    // et des <a class="result__url">domain</a>. On scanne tout le body pour les emails.
     const emails = extractEmailsFromHtml(html);
-    if (emails.length > 0) return emails;
+    if (emails.length === 0) return [];
 
-    // Suit le 1er lien d'établissement pour creuser
-    const match = html.match(/href="(\/pros\/[^"]+)"/);
-    if (match) {
-      const detailUrl = "https://www.pagesjaunes.fr" + match[1].replace(/&amp;/g, "&");
-      const r2 = await fetchWithTimeout(detailUrl, 7000);
-      if (r2.ok) {
-        const html2 = await r2.text();
-        return extractEmailsFromHtml(html2);
+    // Scoring : on garde en priorité les emails dont le local-part contient
+    // un mot du nom de l'entreprise, ou qui sont sur un domaine cohérent.
+    const slugWords = slug.split(/\s+/).filter((w) => w.length >= 4);
+    function score(e: string): number {
+      let s = 0;
+      const [local, domain] = e.split("@");
+      if (!domain) return 0;
+      // bonus si le domaine ressemble au nom de la boîte
+      const dParts = domain.toLowerCase().split(/[.-]/);
+      for (const w of slugWords) {
+        if (dParts.some((p) => p.includes(w))) s += 10;
+        if (local.toLowerCase().includes(w)) s += 5;
       }
+      // bonus pour les préfixes pro
+      if (/^(contact|info|hello|bonjour|accueil|commerce)/.test(local.toLowerCase())) s += 3;
+      // malus pour les emails personnels génériques (sauf si signalé par le nom)
+      if (/@(gmail|hotmail|yahoo|free|orange|wanadoo|sfr|laposte)\./.test(domain)) s -= 2;
+      // malus pour les domaines clairement pas le prospect (presse, mairies, etc.)
+      if (/@(lemonde|lefigaro|mairie|gouv|insee|infogreffe)\./.test(domain)) s -= 50;
+      return s;
     }
-    return [];
+    return emails
+      .map((e) => ({ e, s: score(e) }))
+      .filter((x) => x.s > 0)
+      .sort((a, b) => b.s - a.s)
+      .map((x) => x.e);
   } catch {
     return [];
   }
@@ -294,12 +329,12 @@ Deno.serve(async (req) => {
     }
   }
 
-  // ─── Source 3 : Pages Jaunes (FR-spécifique) ─────────────────────
+  // ─── Source 3 : Recherche web (DuckDuckGo HTML) ───────────────────
   if (candidates.length === 0 && body.company_name) {
-    sourcesTried.push("pages_jaunes");
-    const emails = await searchPagesJaunes(body.company_name, body.city || "");
-    for (const e of emails) {
-      candidates.push({ email: e, source: "pages_jaunes", status: "not_verified", confidence: 90 });
+    sourcesTried.push("web_search");
+    const emails = await searchWebForEmails(body.company_name, body.city || "");
+    for (const e of emails.slice(0, 3)) {
+      candidates.push({ email: e, source: "web_search", status: "not_verified", confidence: 75 });
     }
   }
 

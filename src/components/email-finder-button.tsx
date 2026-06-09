@@ -84,7 +84,7 @@ export function EmailFinderButton({
       const sourceLabel = ({
         scraper: "site web du prospect",
         hunter: "Hunter.io",
-        pages_jaunes: "Pages Jaunes 🇫🇷",
+        web_search: "recherche web (DuckDuckGo)",
         pattern: "pattern + vérification Captain Verify",
       } as Record<string, string>)[data.email_source || ""] || data.email_source || "source inconnue";
       toast.success(`Email trouvé : ${data.email}`, {
