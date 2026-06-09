@@ -43,6 +43,7 @@ function json(body: unknown, status = 200) {
 }
 
 const CAPTAIN_VERIFY_API_KEY = Deno.env.get("CAPTAIN_VERIFY_API_KEY");
+const HUNTER_API_KEY = Deno.env.get("HUNTER_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -125,6 +126,47 @@ async function callCaptainVerify(email: string): Promise<{ status: NormalizedSta
   return { status, raw_result: String(raw), details: data };
 }
 
+/**
+ * 2nd opinion : Hunter.io Email Verifier
+ * Utilisé EN FALLBACK quand Captain Verify retourne "unknown".
+ * Hunter a un protocole de probe différent (multiples IPs, retry interne)
+ * et arrive parfois à conclure là où Captain Verify abandonne.
+ *
+ * Doc : https://hunter.io/api/v2/docs#email-verifier
+ *   GET https://api.hunter.io/v2/email-verifier?email=...&api_key=...
+ *
+ * Statuts Hunter possibles :
+ *   data.result    : "deliverable" | "risky" | "undeliverable" | "unknown"
+ *   data.status    : "valid" | "invalid" | "accept_all" | "webmail" | "disposable" | "unknown"
+ */
+async function callHunterVerify(email: string): Promise<{ status: NormalizedStatus; raw_result: string; details: unknown } | null> {
+  if (!HUNTER_API_KEY) return null;
+  try {
+    const url = new URL("https://api.hunter.io/v2/email-verifier");
+    url.searchParams.set("email", email);
+    url.searchParams.set("api_key", HUNTER_API_KEY);
+    const res = await fetch(url.toString());
+    const data = await res.json();
+    if (!res.ok) return null;
+
+    const d = data?.data || {};
+    const result = String(d?.result || "").toLowerCase(); // deliverable / risky / undeliverable / unknown
+    const statusH = String(d?.status || "").toLowerCase(); // valid / accept_all / disposable / ...
+
+    let normalized: NormalizedStatus = "unknown";
+    if (result === "deliverable") normalized = statusH === "accept_all" ? "risky" : "valid";
+    else if (result === "undeliverable") normalized = "invalid";
+    else if (result === "risky") normalized = "risky";
+
+    const raw = `hunter · ${result || "?"}${statusH ? " · " + statusH : ""}`;
+    console.log(`[email-verify] Hunter 2nd opinion ${email} →`, raw);
+    return { status: normalized, raw_result: raw, details: data };
+  } catch (e) {
+    console.log(`[email-verify] Hunter erreur ${email}:`, (e as Error).message);
+    return null;
+  }
+}
+
 // ─── Handler principal ─────────────────────────────────────────────────
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -190,15 +232,33 @@ Deno.serve(async (req) => {
       continue;
     }
     try {
-      const { status, raw_result, details } = await callCaptainVerify(email);
+      let { status, raw_result, details } = await callCaptainVerify(email);
       providerCount += 1;
+      let providerUsed = "captain_verify";
+
+      // ─── 2nd opinion Hunter si Captain Verify dit "unknown" ──────
+      // Ça arrive sur ~15-25% des emails (serveurs qui silence les probes
+      // SMTP). Hunter a un protocole différent qui s'en sort parfois.
+      if (status === "unknown") {
+        const hunter = await callHunterVerify(email);
+        if (hunter && hunter.status !== "unknown") {
+          status = hunter.status;
+          raw_result = `${raw_result} → ${hunter.raw_result}`;
+          details = { captain_verify: details, hunter: hunter.details };
+          providerUsed = "captain_verify+hunter";
+        }
+      }
+
       const verifiedAt = new Date().toISOString();
-      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-      // Upsert dans le cache mutualisé
+      // TTL adaptatif : on cache 30j les résultats déterminés (valid/risky/invalid),
+      // 1j seulement pour les "unknown" (on retentera demain, ça peut changer)
+      const ttlMs = status === "unknown" ? 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
+      const expiresAt = new Date(Date.now() + ttlMs).toISOString();
+
       await supabase.from("email_verifications").upsert({
         email,
         status,
-        provider: "captain_verify",
+        provider: providerUsed,
         raw_result,
         details,
         verified_at: verifiedAt,

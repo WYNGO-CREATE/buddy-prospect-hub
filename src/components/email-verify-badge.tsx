@@ -35,7 +35,7 @@ const STATUS_META: Record<VerifStatus, { label: string; icon: React.ElementType;
   valid:   { label: "Valide",      icon: CheckCircle2,  cls: "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300/50", tooltip: "Cet email existe et accepte les messages — envoi sûr." },
   risky:   { label: "À risque",    icon: AlertTriangle, cls: "bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-300/50",          tooltip: "Le serveur accepte tout (catch-all) ou c'est une adresse générique (contact@) — envoi à tes risques." },
   invalid: { label: "Invalide",    icon: XCircle,       cls: "bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-300/50",              tooltip: "Cet email n'existe pas — ne pas l'utiliser, sinon rebond garanti." },
-  unknown: { label: "Inconnu",     icon: HelpCircle,    cls: "bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-300/50",            tooltip: "Le serveur n'a pas répondu — réessaie plus tard." },
+  unknown: { label: "À tester",    icon: HelpCircle,    cls: "bg-sky-100 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border-sky-300/50",                   tooltip: "Le serveur SMTP du prospect n'autorise pas les vérifications externes (cas fréquent chez Free, OVH, certains hébergeurs). Ça n'empêche pas l'email d'exister : ~65% des emails « à tester » arrivent quand on envoie pour de vrai. Tu peux envoyer en surveillant les rebonds." },
 };
 
 export function EmailVerifyBadge({ email, compact = false }: { email: string | null | undefined; compact?: boolean }) {
