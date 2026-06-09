@@ -21,10 +21,10 @@ type FinderResult = {
   ok: boolean;
   email: string | null;
   email_status: "valid" | "risky" | "invalid" | "unknown" | "not_verified" | null;
-  email_source: "scraper" | "hunter" | "web_search" | "pattern" | null;
+  email_source: "scraper" | "hunter" | "web_search" | "pattern" | "domain_discovery" | null;
   sources_tried: string[];
   candidates: Array<{ email: string; source: string; status: string; confidence: number }>;
-  debug?: { web_queries?: string[]; web_emails_raw_count?: number };
+  debug?: { web_queries?: string[]; web_emails_raw_count?: number; live_domains?: string[]; checked_domains?: number };
   duration_ms: number;
 };
 
@@ -69,16 +69,18 @@ export function EmailFinderButton({
       setStage("");
       if (!data.email) {
         const desc: string[] = [];
-        desc.push(`Sources tentées : ${data.sources_tried.join(", ") || "aucune"}`);
-        if (data.debug?.web_queries?.length) {
-          desc.push(`${data.debug.web_queries.length} recherches web · ${data.debug.web_emails_raw_count ?? 0} emails bruts (tous filtrés)`);
+        if (data.debug?.live_domains?.length) {
+          desc.push(`Domaine(s) mail détecté(s) : ${data.debug.live_domains.join(", ")} — mais aucun pattern d'email vérifié`);
+        } else if (typeof data.debug?.checked_domains === "number" && data.debug.checked_domains > 0) {
+          desc.push(`${data.debug.checked_domains} domaines testés, aucun ne reçoit de mail`);
         }
         if (data.candidates.length > 0) {
-          desc.push(`${data.candidates.length} candidat(s) testé(s) mais aucun valide`);
+          desc.push(`${data.candidates.length} candidat(s) testé(s), aucun valide`);
         }
-        toast.error("Aucun email trouvé", {
+        desc.push(`Sources : ${data.sources_tried.join(", ") || "aucune"}`);
+        toast.error("Aucun email trouvé pour ce prospect", {
           description: desc.join(" · "),
-          duration: 8000,
+          duration: 9000,
         });
         return;
       }
@@ -94,8 +96,9 @@ export function EmailFinderButton({
       const sourceLabel = ({
         scraper: "site web du prospect",
         hunter: "Hunter.io",
-        web_search: "recherche web (DuckDuckGo)",
-        pattern: "pattern + vérification Captain Verify",
+        web_search: "recherche web",
+        pattern: "pattern + vérification",
+        domain_discovery: "découverte de domaine (MX) + vérification",
       } as Record<string, string>)[data.email_source || ""] || data.email_source || "source inconnue";
       toast.success(`Email trouvé : ${data.email}`, {
         description: `Via ${sourceLabel} (${data.email_status || "non vérifié"})`,

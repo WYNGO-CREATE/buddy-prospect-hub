@@ -52,7 +52,7 @@ const UA_FIREFOX = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.5; rv:127.0) Gecko
 
 type Candidate = {
   email: string;
-  source: "scraper" | "hunter" | "web_search" | "pattern";
+  source: "scraper" | "hunter" | "web_search" | "pattern" | "domain_discovery";
   status: "valid" | "risky" | "invalid" | "unknown" | "not_verified";
   confidence: number; // 0-100
 };
@@ -67,7 +67,10 @@ function isPlausibleEmail(e: string): boolean {
   if (!e) return false;
   if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(e)) return false;
   // Anti-bruit (analytics, sentry, automated)
-  if (/(noreply|no-reply|donotreply|sentry|wixstudio|wixpress|@example\.|@test\.|@sentry\.io|@cloudflare\.|@google\.com$)/i.test(e)) return false;
+  if (/(noreply|no-reply|donotreply|sentry|wixstudio|wixpress|@example\.|@test\.|@sentry\.io|@cloudflare\.)/i.test(e)) return false;
+  // Domaines infra / moteurs de recherche / réseaux sociaux : JAMAIS le prospect.
+  // (c'est ce qui a laissé passer "error-lite@duckduckgo.com")
+  if (/@(duckduckgo|google|googlemail|bing|microsoft|yahoo-inc|yandex|qwant|ecosia|startpage|baidu|wikipedia|wikimedia|youtube|twitter|x\.com|facebook|fb\.com|instagram|linkedin|tiktok|pinterest|snapchat|amazon|apple|adobe|mozilla|wordpress|wix|squarespace|shopify|godaddy|ovh\.(com|net)|gandi)\./i.test(e)) return false;
   return true;
 }
 
@@ -153,8 +156,14 @@ async function ddgSearchEmails(query: string): Promise<string[]> {
     }
     const html = await res.text();
     if (html.length < 1000) {
-      // Probablement une page d'erreur/captcha
       console.log(`[email-finder] DDG retour court (${html.length}b) pour "${query}"`);
+      return [];
+    }
+    // Détecte la page d'erreur / rate-limit de DDG (contient error-lite,
+    // "If this error persists", ou la page "lite" minimaliste). Dans ce cas
+    // on NE scanne PAS (sinon on récupère error-lite@duckduckgo.com).
+    if (/error-lite|If this error persists|anomaly|unusual traffic|rate limit/i.test(html)) {
+      console.log(`[email-finder] DDG page d'erreur/rate-limit pour "${query}"`);
       return [];
     }
     return extractEmailsFromHtml(html);
@@ -300,6 +309,132 @@ async function verifyEmail(email: string, authHeader: string): Promise<"valid" |
   return ((res as { status?: string }).status as "valid" | "risky" | "invalid" | "unknown") || "unknown";
 }
 
+// ─── MOTEUR DE DÉCOUVERTE DE DOMAINE (le game-changer) ───────────────
+/**
+ * Beaucoup de TPE FR n'ont PAS de site web mais possèdent quand même un
+ * nom de domaine avec une boîte mail (ex: la boulangerie a acheté
+ * "boulangerie-martin.fr" chez OVH pour son email, sans jamais faire de
+ * site). website-checker ne les voit pas (il cherche un site HTTP 200),
+ * mais le domaine reçoit du courrier.
+ *
+ * Technique :
+ *   1. On génère des domaines candidats depuis le nom commercial
+ *   2. On vérifie lesquels ont un enregistrement MX (= reçoivent du mail)
+ *      via DNS-over-HTTPS Cloudflare (fonctionne partout, pas de blocage)
+ *   3. Sur les domaines vivants, on génère des patterns d'email et on
+ *      les vérifie via Captain Verify
+ *
+ * 100% gratuit côté découverte (DNS), ne consomme des crédits Captain
+ * Verify que sur des domaines réels → ROI excellent.
+ */
+
+/** DNS-over-HTTPS : le domaine a-t-il un serveur mail (MX) ? */
+async function domainHasMX(domain: string): Promise<boolean> {
+  try {
+    const res = await fetchWithTimeout(
+      `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=MX`,
+      4000,
+      { headers: { "Accept": "application/dns-json" } },
+    );
+    if (!res.ok) return false;
+    const data = await res.json();
+    // type 15 = MX. Si Answer contient au moins un MX → le domaine reçoit du mail.
+    return Array.isArray(data?.Answer) && data.Answer.some((a: { type: number }) => a.type === 15);
+  } catch {
+    return false;
+  }
+}
+
+/** Génère des domaines candidats plausibles depuis le nom commercial. */
+function candidateDomains(companyName: string): string[] {
+  const base = slugifyCompany(companyName); // "boulangerie-martin"
+  if (!base || base.length < 3) return [];
+  const variants = new Set<string>();
+  variants.add(base);                       // boulangerie-martin
+  variants.add(base.replace(/-/g, ""));     // boulangeriemartin
+  const words = base.split("-").filter((w) => w.length >= 3);
+  if (words.length > 1) {
+    // le mot le plus distinctif (souvent le nom propre) = dernier mot
+    variants.add(words[words.length - 1]);  // martin
+    // deux derniers mots collés
+    variants.add(words.slice(-2).join(""));
+  }
+  const tlds = [".fr", ".com", ".net", ".eu"];
+  const domains: string[] = [];
+  for (const v of variants) {
+    if (v.length < 3) continue;
+    for (const tld of tlds) domains.push(v + tld);
+  }
+  return Array.from(new Set(domains)).slice(0, 12);
+}
+
+/**
+ * Découvre l'email via domaine : génère domaines → MX check → patterns → verify.
+ * Retourne les candidats trouvés (vérifiés). Limite les crédits Captain Verify.
+ */
+async function discoverByDomain(
+  companyName: string,
+  firstName: string | undefined,
+  lastName: string | undefined,
+  authHeader: string,
+  knownDomain: string | null,
+): Promise<{ candidates: Candidate[]; live_domains: string[]; checked_domains: number }> {
+  const generated = candidateDomains(companyName);
+  // Le domaine du site (s'il existe) passe en tête : c'est le + sûr.
+  const domains = knownDomain
+    ? [knownDomain, ...generated.filter((d) => d !== knownDomain)]
+    : generated;
+  if (domains.length === 0) return { candidates: [], live_domains: [], checked_domains: 0 };
+
+  // 1. MX check en parallèle (rapide, gratuit, DNS-over-HTTPS)
+  const mxResults = await Promise.all(domains.map(async (d) => ({ d, mx: await domainHasMX(d) })));
+  const liveDomains = mxResults.filter((r) => r.mx).map((r) => r.d);
+  if (liveDomains.length === 0) {
+    return { candidates: [], live_domains: [], checked_domains: domains.length };
+  }
+
+  // 2. Sur les domaines vivants → patterns → verify (budget crédits serré)
+  const found: Candidate[] = [];
+  let credits = 0;
+  const MAX_CREDITS = 6;
+  // Fallback : si aucun pattern n'est "valid"/"risky" mais qu'un domaine
+  // reçoit bien du mail (MX confirmé), on propose quand même contact@domaine
+  // en "à tester" — c'est l'adresse standard d'une TPE FR.
+  let unknownFallback: Candidate | null = null;
+
+  for (const domain of liveDomains) {
+    const patterns: string[] = [];
+    if (firstName && lastName) {
+      patterns.push(...generatePatterns(firstName, lastName, domain).slice(0, 3));
+    }
+    patterns.push(`contact@${domain}`, `info@${domain}`);
+    const uniq = Array.from(new Set(patterns));
+
+    for (const p of uniq) {
+      if (credits >= MAX_CREDITS) break;
+      const status = await verifyEmail(p, authHeader);
+      credits += 1;
+      if (status === "valid") {
+        found.push({ email: p, source: "domain_discovery", status: "valid", confidence: 95 });
+        return { candidates: found, live_domains: liveDomains, checked_domains: domains.length };
+      }
+      if (status === "risky") {
+        found.push({ email: p, source: "domain_discovery", status: "risky", confidence: 65 });
+        break; // catch-all : contact@ est aussi bon qu'un autre
+      }
+      // garde le 1er contact@/info@ "à tester" sur un domaine MX confirmé
+      if (status === "unknown" && !unknownFallback && /^(contact|info)@/.test(p)) {
+        unknownFallback = { email: p, source: "domain_discovery", status: "unknown", confidence: 50 };
+      }
+    }
+    if (credits >= MAX_CREDITS) break;
+    if (found.length > 0) break;
+  }
+
+  if (found.length === 0 && unknownFallback) found.push(unknownFallback);
+  return { candidates: found, live_domains: liveDomains, checked_domains: domains.length };
+}
+
 async function invokeEdgeAuthed<T = unknown>(name: string, body: unknown, authHeader: string): Promise<T | null> {
   try {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
@@ -373,21 +508,9 @@ Deno.serve(async (req) => {
     }
   }
 
-  // ─── Source 3 : Recherche web (DuckDuckGo HTML, 3 requêtes en cascade) ───
-  const debugInfo: { web_queries?: string[]; web_emails_raw_count?: number } = {};
-  if (candidates.length === 0 && body.company_name) {
-    sourcesTried.push("web_search");
-    const { emails, queries } = await searchWebForEmails(body.company_name, body.city || "");
-    debugInfo.web_queries = queries;
-    debugInfo.web_emails_raw_count = emails.length;
-    for (const e of emails.slice(0, 3)) {
-      candidates.push({ email: e, source: "web_search", status: "not_verified", confidence: 70 });
-    }
-  }
-
-  // ─── Source 4 : Pattern + verification ───────────────────────────
-  // Coûteuse en crédits Captain Verify → uniquement si tout le reste a échoué
-  // ET on a un dirigeant ET un domaine candidat.
+  // ─── Source 3 : Pattern sur domaine CONNU (si on a déjà le site) ──
+  // Si website-checker a trouvé un site, on a un domaine sûr → on génère
+  // direct les patterns dessus (plus fiable que la découverte à l'aveugle).
   if (
     candidates.length === 0
     && body.dirigeant_first_name
@@ -405,8 +528,40 @@ Deno.serve(async (req) => {
       }
       if (status === "risky") {
         candidates.push({ email: p, source: "pattern", status: "risky", confidence: 60 });
-        // On continue à chercher un valid
       }
+    }
+  }
+
+  // ─── Source 4 : DÉCOUVERTE DE DOMAINE (le game-changer pour TPE) ──
+  // Marche même SANS site web : génère des domaines candidats depuis le
+  // nom commercial, garde ceux qui ont un serveur mail (MX), génère et
+  // vérifie des patterns dessus. C'est ce qui débloque les boulangers/
+  // coiffeurs qui ont un domaine email mais aucun site.
+  const discoveryDebug: { live_domains?: string[]; checked_domains?: number } = {};
+  if (candidates.length === 0 && body.company_name && !body.skip_verify) {
+    sourcesTried.push("domain_discovery");
+    const disc = await discoverByDomain(
+      body.company_name,
+      body.dirigeant_first_name,
+      body.dirigeant_last_name,
+      authHeader,
+      knownDomain,
+    );
+    discoveryDebug.live_domains = disc.live_domains;
+    discoveryDebug.checked_domains = disc.checked_domains;
+    candidates.push(...disc.candidates);
+  }
+
+  // ─── Source 5 : Recherche web (DuckDuckGo HTML) — dernier recours ──
+  // Le moins fiable (DDG rate-limit), placé en dernier filet de sécurité.
+  const debugInfo: { web_queries?: string[]; web_emails_raw_count?: number } = {};
+  if (candidates.length === 0 && body.company_name) {
+    sourcesTried.push("web_search");
+    const { emails, queries } = await searchWebForEmails(body.company_name, body.city || "");
+    debugInfo.web_queries = queries;
+    debugInfo.web_emails_raw_count = emails.length;
+    for (const e of emails.slice(0, 3)) {
+      candidates.push({ email: e, source: "web_search", status: "not_verified", confidence: 70 });
     }
   }
 
@@ -444,7 +599,7 @@ Deno.serve(async (req) => {
     email_source: best?.source || null,
     sources_tried: sourcesTried,
     candidates,
-    debug: debugInfo,
+    debug: { ...debugInfo, ...discoveryDebug },
     duration_ms: Date.now() - t0,
   });
 });
