@@ -297,31 +297,33 @@ function ChassePage() {
         // (soit trusted Places, soit Pappers vérifié, soit guess vérifié).
         const url: string | null = checkData?.url || null;
 
-        // Étape 3 : scraping email si on a un site
-        let scrapedEmail: string | null = null;
-        if (url) {
-          try {
-            const { data: scrapeData } = await supabase.functions.invoke("email-scraper", {
-              body: { url },
-            });
-            scrapedEmail = (scrapeData as any)?.email || null;
-          } catch {
-            // silencieux
-          }
-        }
-
-        // Étape 4 : Hunter fallback si scraping vide ET on a un domaine
+        // ─── Étape 3 : Email Finder (cascade complète) ───
+        //   Une seule edge function qui orchestre :
+        //     scraper site → Hunter → Pages Jaunes 🇫🇷 → pattern + Captain Verify
+        //   Pour les TPE FR sans site, Pages Jaunes est notre meilleure carte
+        //   (où Hunter et le scraper sont aveugles).
+        let scrapedEmail: string | null = null;  // garde la variable pour compat UI
         let hunterEmail: string | null = null;
-        if (!scrapedEmail && url) {
-          try {
-            const domain = new URL(url).hostname.replace(/^www\./, "");
-            const { data: hunterData } = await supabase.functions.invoke("hunter-find", {
-              body: { action: "domain-search", params: { domain } },
-            });
-            hunterEmail = (hunterData as any)?.email || null;
-          } catch {
-            // silencieux (Hunter pas configuré OU quota dépassé)
+        try {
+          const { data: finderData } = await supabase.functions.invoke("email-finder", {
+            body: {
+              company_name: item.nom,
+              city: item.ville || "",
+              website_url: url || undefined,
+              dirigeant_first_name: item.dirigeant_principal?.prenom || undefined,
+              dirigeant_last_name: item.dirigeant_principal?.nom || undefined,
+            },
+          });
+          const foundEmail = (finderData as { email?: string | null })?.email || null;
+          const foundSource = (finderData as { email_source?: string | null })?.email_source || null;
+          // On range l'email dans scraped_email (site/PJ/pattern) ou hunter_email
+          // selon la source, pour rester cohérent avec l'UI existante.
+          if (foundEmail) {
+            if (foundSource === "hunter") hunterEmail = foundEmail;
+            else scrapedEmail = foundEmail; // scraper / pages_jaunes / pattern
           }
+        } catch {
+          // silencieux — l'utilisateur peut toujours relancer depuis la fiche
         }
 
         setResults((prev) =>

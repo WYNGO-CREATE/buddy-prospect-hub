@@ -19,6 +19,7 @@ import { InstantPreviewDialog } from "@/components/instant-preview-dialog";
 import { PreviewBriefCard } from "@/components/preview-brief-card";
 import { ProspectBriefingCard } from "@/components/prospect-briefing-card";
 import { EmailVerifyBadge } from "@/components/email-verify-badge";
+import { EmailFinderButton } from "@/components/email-finder-button";
 import { findTradeByNaf } from "@/lib/trades-catalog";
 import { Briefcase } from "lucide-react";
 import { PROSPECT_STATUSES, STATUS_LABELS, STATUS_VARIANTS, EVENT_LABELS, type ProspectStatus } from "@/lib/crm";
@@ -405,11 +406,22 @@ function ProspectDetail() {
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Email</p>
                 <p className="font-semibold truncate">{prospect.email || "Non renseigné"}</p>
               </div>
-              {prospect.email && (
-                <div onClick={(e) => e.preventDefault()} className="flex-shrink-0">
+              <div onClick={(e) => e.preventDefault()} className="flex-shrink-0">
+                {prospect.email ? (
                   <EmailVerifyBadge email={prospect.email} />
-                </div>
-              )}
+                ) : (
+                  /* Pas d'email : on lance la cascade email-finder (scraper →
+                     Hunter → Pages Jaunes 🇫🇷 → pattern + Captain Verify). */
+                  <EmailFinderButton
+                    prospectId={prospect.id}
+                    companyName={prospect.company}
+                    city={(prospect as { city?: string | null }).city}
+                    websiteUrl={prospect.website}
+                    dirigeantFirstName={prospect.first_name}
+                    dirigeantLastName={prospect.last_name}
+                  />
+                )}
+              </div>
             </a>
 
             {/* Site web */}

@@ -58,14 +58,29 @@ interface VerifyOutcome {
 
 /**
  * Normalise un résultat Captain Verify vers nos 4 statuts canoniques.
- * Captain Verify peut renvoyer : valid, invalid, catchall, unknown,
- * abuse, blacklist, role, disposable, syntax_error, etc.
+ *
+ * Captain Verify renvoie 4 valeurs principales pour `result` :
+ *   valid | invalid | risky | unknown
+ * + des flags binaires : role, disposable, ok4all (catch-all), free, protected
+ *
+ * Règles métier :
+ *   - valid + role:true   → risky (contact@, info@, etc., taux de réponse bas)
+ *   - valid + ok4all:true → risky (catch-all, on ne peut pas être sûrs)
+ *   - valid + disposable  → invalid (email jetable, pas un vrai prospect)
  */
-function normalizeCaptainVerifyResult(result: string): NormalizedStatus {
-  const r = (result || "").toLowerCase().trim();
-  if (r === "valid") return "valid";
-  if (r === "invalid" || r === "syntax_error" || r === "disposable") return "invalid";
-  if (r === "catchall" || r === "catch-all" || r === "role" || r === "abuse" || r === "blacklist") return "risky";
+function normalizeCaptainVerifyResult(payload: Record<string, unknown>): NormalizedStatus {
+  const raw = String(payload?.result || "").toLowerCase().trim();
+  const role = payload?.role === true;
+  const disposable = payload?.disposable === true;
+  const catchAll = payload?.ok4all === true;
+
+  if (disposable) return "invalid";
+  if (raw === "invalid") return "invalid";
+  if (raw === "valid") {
+    if (role || catchAll) return "risky";
+    return "valid";
+  }
+  if (raw === "risky") return "risky";
   return "unknown";
 }
 
@@ -94,10 +109,20 @@ async function callCaptainVerify(email: string): Promise<{ status: NormalizedSta
     throw new Error(msg);
   }
 
-  // Captain Verify renvoie soit { result: "valid", ... } soit autre forme
-  const raw = (data?.result as string) || (data?.status as string) || "unknown";
-  const status = normalizeCaptainVerifyResult(raw);
-  return { status, raw_result: raw, details: data };
+  // Log côté serveur pour pouvoir débugger depuis le dashboard Supabase
+  console.log(`[email-verify] ${email} →`, JSON.stringify({
+    result: data?.result,
+    details: data?.details,
+    role: data?.role,
+    disposable: data?.disposable,
+    ok4all: data?.ok4all,
+    credits: data?.credits,
+  }));
+
+  const status = normalizeCaptainVerifyResult(data);
+  // raw_result combine le code principal ET le détail (ex: "unknown · smtp_timeout")
+  const raw = [data?.result, data?.details].filter(Boolean).join(" · ") || "unknown";
+  return { status, raw_result: String(raw), details: data };
 }
 
 // ─── Handler principal ─────────────────────────────────────────────────
