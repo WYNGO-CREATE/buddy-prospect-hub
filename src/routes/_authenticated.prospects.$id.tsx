@@ -18,6 +18,7 @@ import { ArrowLeft, PhoneCall, CalendarClock, History, Check, MessageSquare, Tra
 import { InstantPreviewDialog } from "@/components/instant-preview-dialog";
 import { PreviewBriefCard } from "@/components/preview-brief-card";
 import { ProspectBriefingCard } from "@/components/prospect-briefing-card";
+import { EmailVerifyBadge } from "@/components/email-verify-badge";
 import { findTradeByNaf } from "@/lib/trades-catalog";
 import { Briefcase } from "lucide-react";
 import { PROSPECT_STATUSES, STATUS_LABELS, STATUS_VARIANTS, EVENT_LABELS, type ProspectStatus } from "@/lib/crm";
@@ -387,7 +388,7 @@ function ProspectDetail() {
               </div>
             </a>
 
-            {/* Email */}
+            {/* Email + pastille de vérification Captain Verify */}
             <a
               href={prospect.email ? `mailto:${prospect.email}` : undefined}
               className={cn(
@@ -404,6 +405,11 @@ function ProspectDetail() {
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Email</p>
                 <p className="font-semibold truncate">{prospect.email || "Non renseigné"}</p>
               </div>
+              {prospect.email && (
+                <div onClick={(e) => e.preventDefault()} className="flex-shrink-0">
+                  <EmailVerifyBadge email={prospect.email} />
+                </div>
+              )}
             </a>
 
             {/* Site web */}
