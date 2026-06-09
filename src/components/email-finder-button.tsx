@@ -21,9 +21,10 @@ type FinderResult = {
   ok: boolean;
   email: string | null;
   email_status: "valid" | "risky" | "invalid" | "unknown" | "not_verified" | null;
-  email_source: "scraper" | "hunter" | "pages_jaunes" | "pattern" | null;
+  email_source: "scraper" | "hunter" | "web_search" | "pattern" | null;
   sources_tried: string[];
   candidates: Array<{ email: string; source: string; status: string; confidence: number }>;
+  debug?: { web_queries?: string[]; web_emails_raw_count?: number };
   duration_ms: number;
 };
 
@@ -67,8 +68,17 @@ export function EmailFinderButton({
     onSuccess: async (data) => {
       setStage("");
       if (!data.email) {
-        toast.error("Aucun email trouvé sur les sources disponibles", {
-          description: `Sources tentées : ${data.sources_tried.join(", ") || "aucune"}`,
+        const desc: string[] = [];
+        desc.push(`Sources tentées : ${data.sources_tried.join(", ") || "aucune"}`);
+        if (data.debug?.web_queries?.length) {
+          desc.push(`${data.debug.web_queries.length} recherches web · ${data.debug.web_emails_raw_count ?? 0} emails bruts (tous filtrés)`);
+        }
+        if (data.candidates.length > 0) {
+          desc.push(`${data.candidates.length} candidat(s) testé(s) mais aucun valide`);
+        }
+        toast.error("Aucun email trouvé", {
+          description: desc.join(" · "),
+          duration: 8000,
         });
         return;
       }

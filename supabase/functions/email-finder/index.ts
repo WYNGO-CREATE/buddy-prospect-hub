@@ -138,55 +138,99 @@ async function invokeEdge<T = unknown>(name: string, body: unknown): Promise<T |
  * Facebook / annuaires / blogs locaux. Mais c'est exactement ce qu'on veut
  * pour les TPE FR sans site web mais référencées quelque part.
  */
-async function searchWebForEmails(companyName: string, city: string): Promise<string[]> {
-  if (!companyName) return [];
+/**
+ * Lance UNE recherche DuckDuckGo HTML et retourne tous les emails trouvés.
+ * On essaie plusieurs requêtes différentes (large → précise) pour maximiser
+ * les chances de toucher un snippet contenant l'email.
+ */
+async function ddgSearchEmails(query: string): Promise<string[]> {
   try {
-    const slug = slugifyCompany(companyName).replace(/-/g, " ");
-    // Requête : "boulangerie martin" "lyon" (email OR contact)
-    const queryParts = [`"${companyName}"`];
-    if (city) queryParts.push(`"${city}"`);
-    queryParts.push("(email OR contact OR mail)");
-    const q = queryParts.join(" ");
-
-    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`;
+    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
     const res = await fetchWithTimeout(url, 8000);
-    if (!res.ok) return [];
-    const html = await res.text();
-
-    // DuckDuckGo HTML retourne les snippets dans des <a class="result__snippet">…</a>
-    // et des <a class="result__url">domain</a>. On scanne tout le body pour les emails.
-    const emails = extractEmailsFromHtml(html);
-    if (emails.length === 0) return [];
-
-    // Scoring : on garde en priorité les emails dont le local-part contient
-    // un mot du nom de l'entreprise, ou qui sont sur un domaine cohérent.
-    const slugWords = slug.split(/\s+/).filter((w) => w.length >= 4);
-    function score(e: string): number {
-      let s = 0;
-      const [local, domain] = e.split("@");
-      if (!domain) return 0;
-      // bonus si le domaine ressemble au nom de la boîte
-      const dParts = domain.toLowerCase().split(/[.-]/);
-      for (const w of slugWords) {
-        if (dParts.some((p) => p.includes(w))) s += 10;
-        if (local.toLowerCase().includes(w)) s += 5;
-      }
-      // bonus pour les préfixes pro
-      if (/^(contact|info|hello|bonjour|accueil|commerce)/.test(local.toLowerCase())) s += 3;
-      // malus pour les emails personnels génériques (sauf si signalé par le nom)
-      if (/@(gmail|hotmail|yahoo|free|orange|wanadoo|sfr|laposte)\./.test(domain)) s -= 2;
-      // malus pour les domaines clairement pas le prospect (presse, mairies, etc.)
-      if (/@(lemonde|lefigaro|mairie|gouv|insee|infogreffe)\./.test(domain)) s -= 50;
-      return s;
+    if (!res.ok) {
+      console.log(`[email-finder] DDG ${res.status} pour "${query}"`);
+      return [];
     }
-    return emails
-      .map((e) => ({ e, s: score(e) }))
-      .filter((x) => x.s > 0)
-      .sort((a, b) => b.s - a.s)
-      .map((x) => x.e);
-  } catch {
+    const html = await res.text();
+    if (html.length < 1000) {
+      // Probablement une page d'erreur/captcha
+      console.log(`[email-finder] DDG retour court (${html.length}b) pour "${query}"`);
+      return [];
+    }
+    return extractEmailsFromHtml(html);
+  } catch (e) {
+    console.log(`[email-finder] DDG erreur "${query}":`, (e as Error).message);
     return [];
   }
+}
+
+/**
+ * Recherche l'email du prospect via plusieurs requêtes web ciblées.
+ * Stratégie cascade : 3 requêtes du + précis au + large.
+ *
+ * Pourquoi DuckDuckGo HTML : voir explication source 3.
+ */
+async function searchWebForEmails(companyName: string, city: string): Promise<{ emails: string[]; queries: string[] }> {
+  if (!companyName) return { emails: [], queries: [] };
+
+  const queries: string[] = [];
+  const allEmails = new Set<string>();
+
+  // Requête 1 : très précise
+  const q1Parts = [`"${companyName}"`];
+  if (city) q1Parts.push(`"${city}"`);
+  q1Parts.push("(email OR contact OR mail)");
+  const q1 = q1Parts.join(" ");
+  queries.push(q1);
+  (await ddgSearchEmails(q1)).forEach((e) => allEmails.add(e));
+
+  // Requête 2 : sans la ville (élargit)
+  if (allEmails.size === 0) {
+    const q2 = `"${companyName}" (email OR contact)`;
+    queries.push(q2);
+    (await ddgSearchEmails(q2)).forEach((e) => allEmails.add(e));
+  }
+
+  // Requête 3 : ultra-large (sans guillemets)
+  if (allEmails.size === 0) {
+    const q3 = `${companyName} ${city || ""} email contact`.trim();
+    queries.push(q3);
+    (await ddgSearchEmails(q3)).forEach((e) => allEmails.add(e));
+  }
+
+  if (allEmails.size === 0) return { emails: [], queries };
+
+  // Scoring : on filtre les emails clairement hors sujet, mais on est
+  // BEAUCOUP plus permissif que la v1 — sauf signaux négatifs forts,
+  // on garde tout (un email Gmail anonyme peut être l'email de la TPE).
+  const slug = slugifyCompany(companyName).replace(/-/g, " ");
+  const slugWords = slug.split(/\s+/).filter((w) => w.length >= 4);
+
+  function score(e: string): number {
+    let s = 5; // baseline positive
+    const [local, domain] = e.split("@");
+    if (!domain) return -100;
+    const dParts = domain.toLowerCase().split(/[.-]/);
+    for (const w of slugWords) {
+      if (dParts.some((p) => p.includes(w))) s += 10;
+      if (local.toLowerCase().includes(w)) s += 5;
+    }
+    if (/^(contact|info|hello|bonjour|accueil|commerce|service|reservation|rdv|booking)/.test(local.toLowerCase())) s += 3;
+    // malus modéré pour les persos génériques (mais on les garde)
+    if (/@(gmail|hotmail|yahoo|free|orange|wanadoo|sfr|laposte|outlook)\./.test(domain)) s -= 1;
+    // malus FORT pour les domaines clairement hors sujet (parasites)
+    if (/@(lemonde|lefigaro|leparisien|mairie|gouv|insee|infogreffe|wikipedia|youtube|twitter|facebook\.com|linkedin\.com|instagram\.com|tiktok|amazon|google|microsoft|apple)\./.test(domain)) s -= 100;
+    // exclusion totale des emails noreply/notif
+    if (/^(noreply|no-reply|donotreply|notification|alert|admin|webmaster|postmaster|hostmaster|abuse)/.test(local.toLowerCase())) s -= 100;
+    return s;
+  }
+
+  const scored = Array.from(allEmails)
+    .map((e) => ({ e, s: score(e) }))
+    .filter((x) => x.s > 0)
+    .sort((a, b) => b.s - a.s);
+
+  return { emails: scored.map((x) => x.e), queries };
 }
 
 function extractEmailsFromHtml(html: string): string[] {
@@ -329,12 +373,15 @@ Deno.serve(async (req) => {
     }
   }
 
-  // ─── Source 3 : Recherche web (DuckDuckGo HTML) ───────────────────
+  // ─── Source 3 : Recherche web (DuckDuckGo HTML, 3 requêtes en cascade) ───
+  const debugInfo: { web_queries?: string[]; web_emails_raw_count?: number } = {};
   if (candidates.length === 0 && body.company_name) {
     sourcesTried.push("web_search");
-    const emails = await searchWebForEmails(body.company_name, body.city || "");
+    const { emails, queries } = await searchWebForEmails(body.company_name, body.city || "");
+    debugInfo.web_queries = queries;
+    debugInfo.web_emails_raw_count = emails.length;
     for (const e of emails.slice(0, 3)) {
-      candidates.push({ email: e, source: "web_search", status: "not_verified", confidence: 75 });
+      candidates.push({ email: e, source: "web_search", status: "not_verified", confidence: 70 });
     }
   }
 
@@ -397,6 +444,7 @@ Deno.serve(async (req) => {
     email_source: best?.source || null,
     sources_tried: sourcesTried,
     candidates,
+    debug: debugInfo,
     duration_ms: Date.now() - t0,
   });
 });
