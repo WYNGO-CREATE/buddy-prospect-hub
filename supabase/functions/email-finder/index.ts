@@ -47,12 +47,13 @@ function json(body: unknown, status = 200) {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const DROPCONTACT_API_KEY = Deno.env.get("DROPCONTACT_API_KEY");
 
 const UA_FIREFOX = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.5; rv:127.0) Gecko/20100101 Firefox/127.0";
 
 type Candidate = {
   email: string;
-  source: "scraper" | "hunter" | "web_search" | "pattern" | "domain_discovery";
+  source: "scraper" | "hunter" | "web_search" | "pattern" | "domain_discovery" | "dropcontact";
   status: "valid" | "risky" | "invalid" | "unknown" | "not_verified";
   confidence: number; // 0-100
 };
@@ -469,6 +470,101 @@ async function invokeEdgeAuthed<T = unknown>(name: string, body: unknown, authHe
   }
 }
 
+// ─── Source PREMIUM : Dropcontact 🇫🇷 (base de données B2B) ──────────
+/**
+ * Dropcontact : service français RGPD qui maintient une base d'emails B2B
+ * validés (collectés via LinkedIn public, partenariats, historique). C'est
+ * LA source qui trouve les emails que le scraping ne peut pas (TPE qui
+ * cachent leur email derrière un formulaire, contacts LinkedIn, etc.).
+ *
+ * API asynchrone :
+ *   1. POST /v1/enrich/all  → { request_id }
+ *   2. polling GET /v1/enrich/all/{request_id} jusqu'à success:true
+ *
+ * Qualifications retournées (format local@domaine) :
+ *   nominative@pro  → email nominatif pro (le meilleur)  → valid
+ *   generic@pro     → contact@/info@ pro                 → valid
+ *   catch_all@*     → domaine catch-all                  → risky
+ *   *@perso         → email perso (gmail…)               → valid
+ *   invalid / random→ à jeter                            → skip
+ *
+ * Dropcontact ne renvoie que des emails qu'il a VALIDÉS → ce sont de
+ * vrais emails, pas des devinettes.
+ */
+function mapDropcontactQualification(q: string): { status: "valid" | "risky"; confidence: number } | null {
+  // Dropcontact renvoie les qualifications en FR ou EN selon language :
+  //   nominatif/nominative, générique/generic, catch_all, invalide/invalid,
+  //   aléatoire/random — format "local@domaine" (ex: "nominatif@pro").
+  const ql = (q || "").toLowerCase();
+  if (ql.includes("invalid") || ql.includes("aléatoire") || ql.includes("aleatoire") || ql.startsWith("random")) return null;
+  if (ql.includes("catch_all") || ql.includes("catchall")) return { status: "risky", confidence: 65 };
+  if (ql.includes("nominati")) return { status: "valid", confidence: 97 }; // nominatif / nominative
+  if (ql.includes("generi") || ql.includes("génér") || ql.includes("gener")) return { status: "valid", confidence: 88 };
+  // perso ou autre email validé par Dropcontact
+  return { status: "valid", confidence: 82 };
+}
+
+async function callDropcontact(
+  companyName: string,
+  firstName: string | undefined,
+  lastName: string | undefined,
+  website: string | undefined,
+  maxWaitMs = 45000,
+): Promise<{ candidates: Candidate[]; credits_left?: number; error?: string }> {
+  if (!DROPCONTACT_API_KEY) return { candidates: [], error: "no_key" };
+  try {
+    const entry: Record<string, string> = { company: companyName };
+    if (firstName) entry.first_name = firstName;
+    if (lastName) entry.last_name = lastName;
+    if (website) entry.website = website;
+
+    // 1. POST de la demande
+    const postRes = await fetch("https://api.dropcontact.com/v1/enrich/all", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Access-Token": DROPCONTACT_API_KEY },
+      body: JSON.stringify({ data: [entry], siren: false, language: "fr" }),
+    });
+    const postData = await postRes.json();
+    if (!postData?.request_id) {
+      console.log(`[email-finder] Dropcontact pas de request_id:`, JSON.stringify(postData));
+      return { candidates: [], credits_left: postData?.credits_left, error: postData?.reason || "no_request_id" };
+    }
+    const requestId = postData.request_id as string;
+
+    // 2. Polling jusqu'à résultat (Dropcontact calcule en async)
+    const deadline = Date.now() + maxWaitMs;
+    let attempts = 0;
+    while (Date.now() < deadline) {
+      attempts += 1;
+      await new Promise((r) => setTimeout(r, 2500));
+      const getRes = await fetch(`https://api.dropcontact.com/v1/enrich/all/${requestId}`, {
+        headers: { "X-Access-Token": DROPCONTACT_API_KEY, "Content-Type": "application/json" },
+      });
+      const getData = await getRes.json();
+      if (getData?.success === true && Array.isArray(getData?.data)) {
+        const row = getData.data[0] || {};
+        const emailArr = Array.isArray(row.email) ? row.email : [];
+        const candidates: Candidate[] = [];
+        for (const item of emailArr) {
+          const e = normEmail(item?.email || "");
+          if (!isPlausibleEmail(e)) continue;
+          const mapped = mapDropcontactQualification(item?.qualification || "");
+          if (!mapped) continue;
+          candidates.push({ email: e, source: "dropcontact", status: mapped.status, confidence: mapped.confidence });
+        }
+        console.log(`[email-finder] Dropcontact ${companyName} → ${candidates.length} email(s) en ${attempts} polls`);
+        return { candidates, credits_left: getData?.credits_left };
+      }
+      // sinon "Computing. Please wait." → on continue
+    }
+    console.log(`[email-finder] Dropcontact timeout après ${attempts} polls pour ${companyName}`);
+    return { candidates: [], error: "timeout" };
+  } catch (e) {
+    console.log(`[email-finder] Dropcontact erreur:`, (e as Error).message);
+    return { candidates: [], error: (e as Error).message };
+  }
+}
+
 // ─── Orchestrateur principal ─────────────────────────────────────────
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -483,6 +579,7 @@ Deno.serve(async (req) => {
     dirigeant_first_name?: string;
     dirigeant_last_name?: string;
     skip_verify?: boolean;
+    skip_dropcontact?: boolean;
   };
   try { body = await req.json(); } catch { return json({ ok: false, error: "JSON invalide" }, 400); }
 
@@ -525,7 +622,24 @@ Deno.serve(async (req) => {
     }
   }
 
-  // ─── Source 3 : Pattern sur domaine CONNU (si on a déjà le site) ──
+  // ─── Source 3 : Dropcontact 🇫🇷 (base de données B2B premium) ──────
+  // La source la + puissante pour les TPE : trouve les emails validés que
+  // le scraping ne peut pas voir (formulaires de contact, LinkedIn…).
+  const dropcontactDebug: { credits_left?: number; error?: string } = {};
+  if (candidates.length === 0 && body.company_name && DROPCONTACT_API_KEY && !body.skip_dropcontact) {
+    sourcesTried.push("dropcontact");
+    const dc = await callDropcontact(
+      body.company_name,
+      body.dirigeant_first_name,
+      body.dirigeant_last_name,
+      body.website_url,
+    );
+    dropcontactDebug.credits_left = dc.credits_left;
+    if (dc.error) dropcontactDebug.error = dc.error;
+    candidates.push(...dc.candidates);
+  }
+
+  // ─── Source 4 : Pattern sur domaine CONNU (si on a déjà le site) ──
   // Si website-checker a trouvé un site, on a un domaine sûr → on génère
   // direct les patterns dessus (plus fiable que la découverte à l'aveugle).
   if (
@@ -616,7 +730,7 @@ Deno.serve(async (req) => {
     email_source: best?.source || null,
     sources_tried: sourcesTried,
     candidates,
-    debug: { ...debugInfo, ...discoveryDebug },
+    debug: { ...debugInfo, ...discoveryDebug, dropcontact: dropcontactDebug },
     duration_ms: Date.now() - t0,
   });
 });

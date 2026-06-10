@@ -99,6 +99,7 @@ export function EmailFinderButton({
         web_search: "recherche web",
         pattern: "pattern + vérification",
         domain_discovery: "découverte de domaine (MX) + vérification",
+        dropcontact: "Dropcontact 🇫🇷",
       } as Record<string, string>)[data.email_source || ""] || data.email_source || "source inconnue";
       toast.success(`Email trouvé : ${data.email}`, {
         description: `Via ${sourceLabel} (${data.email_status || "non vérifié"})`,

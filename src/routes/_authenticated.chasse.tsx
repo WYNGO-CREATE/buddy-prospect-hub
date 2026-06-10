@@ -299,9 +299,10 @@ function ChassePage() {
 
         // ─── Étape 3 : Email Finder (cascade complète) ───
         //   Une seule edge function qui orchestre :
-        //     scraper site → Hunter → Pages Jaunes 🇫🇷 → pattern + Captain Verify
-        //   Pour les TPE FR sans site, Pages Jaunes est notre meilleure carte
-        //   (où Hunter et le scraper sont aveugles).
+        //     scraper site → Hunter → découverte domaine MX → web search
+        //   NB : on skip Dropcontact ici (trop lent en bulk : ~45s/prospect).
+        //   Dropcontact reste dispo en 1 clic depuis la fiche prospect, et un
+        //   mode batch Dropcontact pour la chasse arrivera ensuite.
         let scrapedEmail: string | null = null;  // garde la variable pour compat UI
         let hunterEmail: string | null = null;
         try {
@@ -312,6 +313,7 @@ function ChassePage() {
               website_url: url || undefined,
               dirigeant_first_name: item.dirigeant_principal?.prenom || undefined,
               dirigeant_last_name: item.dirigeant_principal?.nom || undefined,
+              skip_dropcontact: true,
             },
           });
           const foundEmail = (finderData as { email?: string | null })?.email || null;
