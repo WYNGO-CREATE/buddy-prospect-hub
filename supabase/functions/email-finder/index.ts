@@ -60,8 +60,26 @@ type Candidate = {
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
-function normEmail(e: string): string {
-  return (e || "").trim().toLowerCase();
+function normEmail(e: unknown): string {
+  if (typeof e === "string") return e.trim().toLowerCase();
+  return "";
+}
+
+/** email-scraper renvoie all_emails sous forme d'objets {email, score} OU
+ *  de strings selon les versions → on extrait toujours des strings propres. */
+function extractScraperEmails(r: { email?: string; all_emails?: unknown } | null): string[] {
+  if (!r) return [];
+  const out: string[] = [];
+  if (typeof r.email === "string") out.push(r.email);
+  if (Array.isArray(r.all_emails)) {
+    for (const item of r.all_emails) {
+      if (typeof item === "string") out.push(item);
+      else if (item && typeof item === "object" && typeof (item as { email?: string }).email === "string") {
+        out.push((item as { email: string }).email);
+      }
+    }
+  }
+  return out.map(normEmail).filter(isPlausibleEmail);
 }
 
 function isPlausibleEmail(e: string): boolean {
@@ -104,17 +122,25 @@ async function fetchWithTimeout(url: string, ms = 8000, init: RequestInit = {}):
 
 async function invokeEdge<T = unknown>(name: string, body: unknown): Promise<T | null> {
   try {
+    // Appel edge→edge : la gateway Supabase exige le header `apikey` EN PLUS
+    // de Authorization. On utilise la service_role pour passer verify_jwt à
+    // coup sûr (sinon l'appel est rejeté en 401 silencieusement).
     const res = await fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+        "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        "apikey": SUPABASE_SERVICE_ROLE_KEY,
       },
       body: JSON.stringify(body),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.log(`[email-finder] invokeEdge ${name} → HTTP ${res.status}`);
+      return null;
+    }
     return await res.json() as T;
-  } catch {
+  } catch (e) {
+    console.log(`[email-finder] invokeEdge ${name} erreur:`, (e as Error).message);
     return null;
   }
 }
@@ -433,11 +459,8 @@ async function discoverByDomain(
   // => On récupère un VRAI email publié, pas une devinette.
   for (const domain of liveDomains.slice(0, 4)) {
     for (const url of [`https://www.${domain}`, `https://${domain}`]) {
-      const r = await invokeEdge<{ email?: string; all_emails?: string[] }>("email-scraper", { url });
-      const emails = [r?.email, ...(r?.all_emails || [])]
-        .filter(Boolean)
-        .map((e) => normEmail(e as string))
-        .filter(isPlausibleEmail);
+      const r = await invokeEdge<{ email?: string; all_emails?: unknown }>("email-scraper", { url });
+      const emails = extractScraperEmails(r);
       // Priorité aux emails sur LE domaine du prospect (les + sûrs)
       const onDomain = emails.filter((e) => e.endsWith(`@${domain}`));
       const picks = onDomain.length > 0 ? onDomain : emails;
@@ -483,19 +506,25 @@ async function discoverByDomain(
   return { candidates: [], live_domains: liveDomains, checked_domains: domains.length };
 }
 
-async function invokeEdgeAuthed<T = unknown>(name: string, body: unknown, authHeader: string): Promise<T | null> {
+async function invokeEdgeAuthed<T = unknown>(name: string, body: unknown, _authHeader: string): Promise<T | null> {
+  // On force la service_role + apikey (appel edge→edge fiable, verify_jwt OK).
   try {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": authHeader || `Bearer ${SUPABASE_ANON_KEY}`,
+        "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        "apikey": SUPABASE_SERVICE_ROLE_KEY,
       },
       body: JSON.stringify(body),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.log(`[email-finder] invokeEdgeAuthed ${name} → HTTP ${res.status}`);
+      return null;
+    }
     return await res.json() as T;
-  } catch {
+  } catch (e) {
+    console.log(`[email-finder] invokeEdgeAuthed ${name} erreur:`, (e as Error).message);
     return null;
   }
 }
@@ -627,12 +656,10 @@ Deno.serve(async (req) => {
   // ─── Source 1 : scraper (si site connu) ──────────────────────────
   if (body.website_url) {
     sourcesTried.push("scraper");
-    const r = await invokeEdge<{ email?: string; all_emails?: string[] }>("email-scraper", { url: body.website_url });
-    const found = [r?.email, ...(r?.all_emails || [])].filter(Boolean) as string[];
-    for (const e of found) {
-      const n = normEmail(e);
-      if (isPlausibleEmail(n)) {
-        candidates.push({ email: n, source: "scraper", status: "not_verified", confidence: 85 });
+    const r = await invokeEdge<{ email?: string; all_emails?: unknown }>("email-scraper", { url: body.website_url });
+    for (const e of extractScraperEmails(r)) {
+      if (!candidates.some((c) => c.email === e)) {
+        candidates.push({ email: e, source: "scraper", status: "not_verified", confidence: 85 });
       }
     }
   }
