@@ -649,14 +649,34 @@ Deno.serve(async (req) => {
 
   // Domaine candidat depuis website_url (si fourni)
   let knownDomain: string | null = null;
-  if (body.website_url) {
-    try { knownDomain = new URL(body.website_url).hostname.replace(/^www\./, ""); } catch { /* skip */ }
+  let websiteUrl: string | undefined = body.website_url;
+  if (websiteUrl) {
+    try { knownDomain = new URL(websiteUrl).hostname.replace(/^www\./, ""); } catch { /* skip */ }
   }
 
-  // ─── Source 1 : scraper (si site connu) ──────────────────────────
-  if (body.website_url) {
+  // ─── Source 0 : Google Places → découvrir le site web manquant ────
+  // Si on n'a pas de site stocké, Google connaît souvent celui du commerce
+  // local (95% des TPE actives y sont). On récupère le site puis on le
+  // scrapera. Réutilise la clé Google Places déjà configurée (0 coût en +).
+  const placesDebug: { website_found?: string | null } = {};
+  if (!websiteUrl && body.company_name) {
+    sourcesTried.push("places");
+    const pl = await invokeEdge<{ ok?: boolean; place?: { website?: string | null } }>("places-enrich", {
+      name: body.company_name,
+      city: body.city || undefined,
+    });
+    const w = pl?.place?.website || null;
+    placesDebug.website_found = w;
+    if (w) {
+      websiteUrl = w;
+      try { knownDomain = new URL(w).hostname.replace(/^www\./, ""); } catch { /* skip */ }
+    }
+  }
+
+  // ─── Source 1 : scraper (si site connu ou découvert via Places) ───
+  if (websiteUrl) {
     sourcesTried.push("scraper");
-    const r = await invokeEdge<{ email?: string; all_emails?: unknown }>("email-scraper", { url: body.website_url });
+    const r = await invokeEdge<{ email?: string; all_emails?: unknown }>("email-scraper", { url: websiteUrl });
     for (const e of extractScraperEmails(r)) {
       if (!candidates.some((c) => c.email === e)) {
         candidates.push({ email: e, source: "scraper", status: "not_verified", confidence: 85 });
@@ -689,7 +709,7 @@ Deno.serve(async (req) => {
       body.company_name,
       body.dirigeant_first_name,
       body.dirigeant_last_name,
-      body.website_url,
+      websiteUrl,
     );
     dropcontactDebug.credits_left = dc.credits_left;
     if (dc.error) dropcontactDebug.error = dc.error;
@@ -787,7 +807,8 @@ Deno.serve(async (req) => {
     email_source: best?.source || null,
     sources_tried: sourcesTried,
     candidates,
-    debug: { ...debugInfo, ...discoveryDebug, dropcontact: dropcontactDebug },
+    website_used: websiteUrl || null,
+    debug: { ...debugInfo, ...discoveryDebug, dropcontact: dropcontactDebug, places: placesDebug },
     duration_ms: Date.now() - t0,
   });
 });
