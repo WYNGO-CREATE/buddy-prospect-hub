@@ -68,20 +68,17 @@ export function EmailFinderButton({
     onSuccess: async (data) => {
       setStage("");
       if (!data.email) {
-        const desc: string[] = [];
-        if (data.debug?.live_domains?.length) {
-          desc.push(`Domaine(s) mail détecté(s) : ${data.debug.live_domains.join(", ")} — mais aucun pattern d'email vérifié`);
-        } else if (typeof data.debug?.checked_domains === "number" && data.debug.checked_domains > 0) {
-          desc.push(`${data.debug.checked_domains} domaines testés, aucun ne reçoit de mail`);
+        const dcErr = data.debug?.dropcontact?.error;
+        const dcCredits = data.debug?.dropcontact?.credits_left;
+        let desc = "Ce prospect n'a aucun email exploitable publiquement (pas de site, absent des bases B2B).";
+        if (dcErr === "timeout") {
+          desc = "Dropcontact n'a pas répondu à temps — réessaie dans quelques secondes.";
+        } else if (dcErr === "no_key") {
+          desc = "Dropcontact non configuré.";
+        } else if (typeof dcCredits === "number" && dcCredits <= 0) {
+          desc = "Crédits Dropcontact épuisés — recharge ton compte pour continuer.";
         }
-        if (data.candidates.length > 0) {
-          desc.push(`${data.candidates.length} candidat(s) testé(s), aucun valide`);
-        }
-        desc.push(`Sources : ${data.sources_tried.join(", ") || "aucune"}`);
-        toast.error("Aucun email trouvé pour ce prospect", {
-          description: desc.join(" · "),
-          duration: 9000,
-        });
+        toast.error("Aucun email trouvé", { description: desc, duration: 8000 });
         return;
       }
       // Persiste sur le prospect

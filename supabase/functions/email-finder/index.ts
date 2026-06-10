@@ -346,27 +346,57 @@ async function domainHasMX(domain: string): Promise<boolean> {
   }
 }
 
-/** Génère des domaines candidats plausibles depuis le nom commercial. */
+// Mots trop génériques pour faire un domaine fiable à eux seuls : un
+// "julie.fr" ou "martin.fr" appartient presque toujours à quelqu'un
+// d'autre. On ne génère JAMAIS un domaine à partir d'un seul de ces mots.
+const GENERIC_WORDS = new Set([
+  // types d'activité (le nom propre est ce qui compte)
+  "coiffure", "coiffeur", "boulangerie", "patisserie", "restaurant", "boucherie",
+  "pharmacie", "garage", "fleuriste", "institut", "salon", "boutique", "cabinet",
+  "atelier", "maison", "cafe", "bar", "brasserie", "pizzeria", "epicerie", "tabac",
+  "opticien", "optique", "auto", "ecole", "agence", "studio", "espace", "centre",
+  "sarl", "eurl", "sas", "sasu", "ets", "etablissements", "societe", "entreprise",
+  "chez", "le", "la", "les", "du", "de", "des", "aux",
+  // prénoms courants (un prénom seul = domaine de qqn d'autre)
+  "julie", "marie", "sophie", "julien", "nicolas", "thomas", "paul", "pierre",
+  "jean", "michel", "david", "laurent", "stephane", "sebastien", "alexandre",
+  "anne", "claire", "emma", "lucas", "hugo", "leo", "manon", "chloe", "sarah",
+]);
+
+/** Génère des domaines candidats plausibles depuis le nom commercial.
+ *  On privilégie le NOM COMPLET (peu de chances de collision) et on évite
+ *  les mots uniques génériques (prénoms, types d'activité). */
 function candidateDomains(companyName: string): string[] {
-  const base = slugifyCompany(companyName); // "boulangerie-martin"
-  if (!base || base.length < 3) return [];
+  const base = slugifyCompany(companyName); // "coiffure-julie"
+  if (!base || base.length < 4) return [];
+  const words = base.split("-").filter((w) => w.length >= 2);
+  if (words.length === 0) return [];
+
   const variants = new Set<string>();
-  variants.add(base);                       // boulangerie-martin
-  variants.add(base.replace(/-/g, ""));     // boulangeriemartin
-  const words = base.split("-").filter((w) => w.length >= 3);
-  if (words.length > 1) {
-    // le mot le plus distinctif (souvent le nom propre) = dernier mot
-    variants.add(words[words.length - 1]);  // martin
-    // deux derniers mots collés
-    variants.add(words.slice(-2).join(""));
+  // 1. Nom complet (le + fiable) : avec et sans tirets
+  variants.add(base);                    // coiffure-julie
+  variants.add(base.replace(/-/g, ""));  // coiffurejulie
+
+  // 2. Mot unique SEULEMENT s'il est distinctif (pas générique, assez long)
+  if (words.length === 1) {
+    const w = words[0];
+    if (w.length >= 5 && !GENERIC_WORDS.has(w)) variants.add(w);
   }
-  const tlds = [".fr", ".com", ".net", ".eu"];
+
+  // 3. Si nom multi-mots : tente le dernier mot SEULEMENT s'il est distinctif
+  //    (ex: "boulangerie-duranton" → "duranton" OK ; "coiffure-julie" → "julie" REFUSÉ)
+  if (words.length > 1) {
+    const last = words[words.length - 1];
+    if (last.length >= 6 && !GENERIC_WORDS.has(last)) variants.add(last);
+  }
+
+  const tlds = [".fr", ".com"];
   const domains: string[] = [];
   for (const v of variants) {
-    if (v.length < 3) continue;
+    if (v.length < 4) continue;
     for (const tld of tlds) domains.push(v + tld);
   }
-  return Array.from(new Set(domains)).slice(0, 12);
+  return Array.from(new Set(domains)).slice(0, 8);
 }
 
 /**
