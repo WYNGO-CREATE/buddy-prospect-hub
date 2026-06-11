@@ -12,6 +12,7 @@ import {
   Sparkles,
   Headphones,
   Target,
+  Rocket,
 } from "lucide-react";
 import {
   Sidebar,
@@ -81,6 +82,7 @@ export function AppSidebar() {
     { title: "Génération d'emails", url: "/templates", icon: Sparkles, badge: 0 },
     { title: "Scripts d'appel", url: "/scripts", icon: Headphones, badge: 0 },
     { title: "Chasse aux prospects", url: "/chasse", icon: Target, badge: 0 },
+    { title: "Studio", url: "/studio", icon: Rocket, badge: 0 },
   ];
   if (role === "admin") {
     items.push({ title: "Équipe", url: "/equipe", icon: UserCog, badge: 0 });

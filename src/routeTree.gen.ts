@@ -17,6 +17,7 @@ import { Route as AuthGmailCallbackRouteImport } from './routes/auth.gmail-callb
 import { Route as AuthenticatedWorkflowsRouteImport } from './routes/_authenticated.workflows'
 import { Route as AuthenticatedTemplatesRouteImport } from './routes/_authenticated.templates'
 import { Route as AuthenticatedTableauRouteImport } from './routes/_authenticated.tableau'
+import { Route as AuthenticatedStudioRouteImport } from './routes/_authenticated.studio'
 import { Route as AuthenticatedScriptsRouteImport } from './routes/_authenticated.scripts'
 import { Route as AuthenticatedRelancesRouteImport } from './routes/_authenticated.relances'
 import { Route as AuthenticatedProfilRouteImport } from './routes/_authenticated.profil'
@@ -67,6 +68,11 @@ const AuthenticatedTemplatesRoute = AuthenticatedTemplatesRouteImport.update({
 const AuthenticatedTableauRoute = AuthenticatedTableauRouteImport.update({
   id: '/tableau',
   path: '/tableau',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedStudioRoute = AuthenticatedStudioRouteImport.update({
+  id: '/studio',
+  path: '/studio',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedScriptsRoute = AuthenticatedScriptsRouteImport.update({
@@ -146,6 +152,7 @@ export interface FileRoutesByFullPath {
   '/profil': typeof AuthenticatedProfilRoute
   '/relances': typeof AuthenticatedRelancesRoute
   '/scripts': typeof AuthenticatedScriptsRoute
+  '/studio': typeof AuthenticatedStudioRoute
   '/tableau': typeof AuthenticatedTableauRoute
   '/templates': typeof AuthenticatedTemplatesRoute
   '/workflows': typeof AuthenticatedWorkflowsRoute
@@ -166,6 +173,7 @@ export interface FileRoutesByTo {
   '/profil': typeof AuthenticatedProfilRoute
   '/relances': typeof AuthenticatedRelancesRoute
   '/scripts': typeof AuthenticatedScriptsRoute
+  '/studio': typeof AuthenticatedStudioRoute
   '/tableau': typeof AuthenticatedTableauRoute
   '/templates': typeof AuthenticatedTemplatesRoute
   '/workflows': typeof AuthenticatedWorkflowsRoute
@@ -189,6 +197,7 @@ export interface FileRoutesById {
   '/_authenticated/profil': typeof AuthenticatedProfilRoute
   '/_authenticated/relances': typeof AuthenticatedRelancesRoute
   '/_authenticated/scripts': typeof AuthenticatedScriptsRoute
+  '/_authenticated/studio': typeof AuthenticatedStudioRoute
   '/_authenticated/tableau': typeof AuthenticatedTableauRoute
   '/_authenticated/templates': typeof AuthenticatedTemplatesRoute
   '/_authenticated/workflows': typeof AuthenticatedWorkflowsRoute
@@ -213,6 +222,7 @@ export interface FileRouteTypes {
     | '/profil'
     | '/relances'
     | '/scripts'
+    | '/studio'
     | '/tableau'
     | '/templates'
     | '/workflows'
@@ -233,6 +243,7 @@ export interface FileRouteTypes {
     | '/profil'
     | '/relances'
     | '/scripts'
+    | '/studio'
     | '/tableau'
     | '/templates'
     | '/workflows'
@@ -255,6 +266,7 @@ export interface FileRouteTypes {
     | '/_authenticated/profil'
     | '/_authenticated/relances'
     | '/_authenticated/scripts'
+    | '/_authenticated/studio'
     | '/_authenticated/tableau'
     | '/_authenticated/templates'
     | '/_authenticated/workflows'
@@ -327,6 +339,13 @@ declare module '@tanstack/react-router' {
       path: '/tableau'
       fullPath: '/tableau'
       preLoaderRoute: typeof AuthenticatedTableauRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/studio': {
+      id: '/_authenticated/studio'
+      path: '/studio'
+      fullPath: '/studio'
+      preLoaderRoute: typeof AuthenticatedStudioRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/scripts': {
@@ -427,6 +446,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedProfilRoute: typeof AuthenticatedProfilRoute
   AuthenticatedRelancesRoute: typeof AuthenticatedRelancesRoute
   AuthenticatedScriptsRoute: typeof AuthenticatedScriptsRoute
+  AuthenticatedStudioRoute: typeof AuthenticatedStudioRoute
   AuthenticatedTableauRoute: typeof AuthenticatedTableauRoute
   AuthenticatedTemplatesRoute: typeof AuthenticatedTemplatesRoute
   AuthenticatedWorkflowsRoute: typeof AuthenticatedWorkflowsRoute
@@ -446,6 +466,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedProfilRoute: AuthenticatedProfilRoute,
   AuthenticatedRelancesRoute: AuthenticatedRelancesRoute,
   AuthenticatedScriptsRoute: AuthenticatedScriptsRoute,
+  AuthenticatedStudioRoute: AuthenticatedStudioRoute,
   AuthenticatedTableauRoute: AuthenticatedTableauRoute,
   AuthenticatedTemplatesRoute: AuthenticatedTemplatesRoute,
   AuthenticatedWorkflowsRoute: AuthenticatedWorkflowsRoute,
