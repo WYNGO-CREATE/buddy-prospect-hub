@@ -106,8 +106,50 @@ Deno.serve(async (req) => {
       agencyLogoUrl: agency?.logo_url,
     };
 
-    const htmlBody = buildEmailHtml(body, sigData);
-    const textBody = buildEmailText(body, sigData);
+    // ─── Substitution des variables {{prenom}} {{entreprise}}… ────────
+    // Le pitch/template peut contenir des placeholders. On les remplace
+    // avec les vraies données du prospect avant l'envoi. "Contact" (le
+    // placeholder de la chasse quand le dirigeant est inconnu) est traité
+    // comme un prénom vide → on ne envoie jamais "Bonjour Contact".
+    const { data: prospect } = await admin
+      .from("prospects")
+      .select("first_name, last_name, company, email, phone, website, title, location")
+      .eq("id", prospect_id)
+      .maybeSingle();
+
+    const cleanName = (v?: string | null) => {
+      const s = (v || "").trim();
+      return !s || s.toLowerCase() === "contact" ? "" : s;
+    };
+    const vars: Record<string, string> = {
+      prenom: cleanName(prospect?.first_name),
+      first_name: cleanName(prospect?.first_name),
+      nom: prospect?.last_name || "",
+      last_name: prospect?.last_name || "",
+      entreprise: prospect?.company || "",
+      company: prospect?.company || "",
+      email: prospect?.email || "",
+      telephone: prospect?.phone || "", tel: prospect?.phone || "", phone: prospect?.phone || "",
+      site: prospect?.website || "", site_web: prospect?.website || "", website: prospect?.website || "",
+      poste: prospect?.title || "", fonction: prospect?.title || "",
+      ville: prospect?.location || "", localisation: prospect?.location || "",
+      expediteur: profile?.full_name || "", sender: profile?.full_name || "",
+      telephone_expediteur: profile?.phone || "",
+      agence: agency?.name || "Wyngo", site_agence: agency?.website_url || "",
+    };
+    const render = (tpl: string): string => {
+      let out = (tpl || "").replace(/\{\{\s*(\w+)\s*\}\}/g, (_m, k: string) =>
+        Object.prototype.hasOwnProperty.call(vars, k) ? vars[k] : `{{${k}}}`);
+      out = out.replace(/\b(Bonjour|Bonsoir|Salut|Coucou|Cher|Chère)\s+,/gi, "$1,");
+      out = out.replace(/[^\S\n]{2,}/g, " ");
+      return out;
+    };
+
+    const renderedSubject = render(subject || "");
+    const renderedBody = render(body);
+
+    const htmlBody = buildEmailHtml(renderedBody, sigData);
+    const textBody = buildEmailText(renderedBody, sigData);
 
     // ─── Construction du From avec nom d'affichage ───
     // Format RFC 5322 : "Nom" <email>. Indispensable pour la délivrabilité
@@ -119,7 +161,7 @@ Deno.serve(async (req) => {
     const raw = buildRawMultipartEmail({
       from: fromHeader,
       to,
-      subject: subject || "",
+      subject: renderedSubject,
       textBody,
       htmlBody,
       in_reply_to,
@@ -151,8 +193,8 @@ Deno.serve(async (req) => {
       owner_id: userId,
       channel: "email",
       direction: "outbound",
-      subject: subject || null,
-      content: body,
+      subject: renderedSubject || null,
+      content: renderedBody,
       external_id: sent.id,
       thread_id: sent.threadId,
       from_email: account.email,

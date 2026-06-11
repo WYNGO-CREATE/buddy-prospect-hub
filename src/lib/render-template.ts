@@ -21,9 +21,17 @@ export type RenderContext = {
   agency_website?: string | null;
 };
 
+/** "Contact" est le placeholder posé par la chasse quand le dirigeant est
+ *  inconnu — on ne veut JAMAIS l'afficher comme un vrai prénom. */
+function cleanName(v?: string | null): string {
+  const s = (v || "").trim();
+  if (!s || s.toLowerCase() === "contact") return "";
+  return s;
+}
+
 const ALIASES: Record<string, (c: RenderContext) => string> = {
   // FR — Prospect
-  prenom: (c) => c.first_name || "",
+  prenom: (c) => cleanName(c.first_name),
   nom: (c) => c.last_name || "",
   entreprise: (c) => c.company || "",
   email: (c) => c.email || "",
@@ -42,7 +50,7 @@ const ALIASES: Record<string, (c: RenderContext) => string> = {
   agence: (c) => c.agency_name || "",
   site_agence: (c) => c.agency_website || "",
   // EN aliases (rétrocompat + commodité)
-  first_name: (c) => c.first_name || "",
+  first_name: (c) => cleanName(c.first_name),
   last_name: (c) => c.last_name || "",
   company: (c) => c.company || "",
   phone: (c) => c.phone || "",
@@ -53,10 +61,16 @@ const ALIASES: Record<string, (c: RenderContext) => string> = {
 };
 
 export function renderTemplate(template: string, ctx: RenderContext): string {
-  return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => {
+  let out = template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => {
     const fn = ALIASES[key];
     return fn ? fn(ctx) : `{{${key}}}`;
   });
+  // Nettoyage des formules de politesse quand le prénom était vide :
+  //   "Bonjour ," → "Bonjour,"  ·  "c'est  ," → "c'est,"
+  out = out.replace(/\b(Bonjour|Bonsoir|Salut|Coucou|Cher|Chère)\s+,/gi, "$1,");
+  // Espaces doubles laissés par une variable vide
+  out = out.replace(/[^\S\n]{2,}/g, " ");
+  return out;
 }
 
 export const AVAILABLE_VARS: Array<{ key: string; label: string }> = [

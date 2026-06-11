@@ -403,10 +403,17 @@ Deno.serve(async (req) => {
       valueProps: agency?.value_props,
     });
 
+    // "Contact" est le placeholder posé par la chasse quand le dirigeant
+    // est inconnu — on ne le passe pas à l'IA (sinon "Bonjour Contact").
+    const cleanFirst = (prospect.first_name || "").trim().toLowerCase() === "contact"
+      ? null : prospect.first_name;
+    const cleanLast = (prospect.last_name || "").trim().toLowerCase() === "contact"
+      ? null : prospect.last_name;
+
     const userPrompt = buildUserPrompt({
-      company: prospect.company || prospect.last_name || "—",
-      first_name: prospect.first_name,
-      last_name: prospect.last_name,
+      company: prospect.company || cleanLast || "—",
+      first_name: cleanFirst,
+      last_name: cleanLast,
       title: (prospect as { title?: string | null }).title,
       industry: (prospect as { industry?: string | null }).industry,
       location: (prospect as { location?: string | null }).location,
