@@ -235,11 +235,14 @@ export function CockpitSessionMode({
   const phone = current.prospect.phone;
   const email = current.prospect.email;
 
-  const smsAccroche = `Bonjour ${firstName}, ${meta.suggestionPrefix.toLowerCase()} — je vous propose d'en discuter quand vous voulez. À très vite.`;
+  // Si la chasse n'a pas trouvé de dirigeant, first_name = "Contact" :
+  // on évite alors d'afficher un "Bonjour Contact" ridicule.
+  const hasRealName = firstName && firstName.toLowerCase() !== "contact";
+  const greeting = hasRealName ? `Bonjour ${firstName}, ` : "Bonjour, ";
 
   // Message pour partager l'aperçu
   const previewMsg = previewUrl
-    ? `Bonjour ${firstName}, voici l'aperçu du site que j'ai préparé pour ${current.prospect.company || "vous"} : ${previewUrl}`
+    ? `${greeting}voici l'aperçu du site que j'ai préparé pour ${current.prospect.company || "vous"} : ${previewUrl}`
     : "";
 
   const copyToClipboard = (text: string, label: string) => {
@@ -287,15 +290,6 @@ export function CockpitSessionMode({
               {current.excerpt && <p className="text-xs italic text-muted-foreground line-clamp-3">"{current.excerpt}"</p>}
             </div>
           )}
-
-          {/* Accroche suggérée */}
-          <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-2">
-            <p className="text-[10px] uppercase tracking-wider font-semibold text-primary">💬 Accroche suggérée</p>
-            <p className="text-sm leading-relaxed">{smsAccroche}</p>
-            <Button size="sm" variant="ghost" className="h-7 text-xs gap-1.5" onClick={() => copyToClipboard(smsAccroche, "Accroche copiée")}>
-              <Copy className="size-3" /> Copier
-            </Button>
-          </div>
 
           {/* ─── Bloc APERÇU INSTANTANÉ ─── */}
           <div className="rounded-lg border border-amber-200 dark:border-amber-900/50 bg-amber-50/50 dark:bg-amber-950/20 p-3 space-y-2">
