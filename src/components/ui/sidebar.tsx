@@ -106,6 +106,17 @@ const SidebarProvider = React.forwardRef<
       return () => window.removeEventListener("keydown", handleKeyDown);
     }, [toggleSidebar]);
 
+    // Synchronise l'état quand on franchit le seuil mobile ↔ desktop.
+    // Quand on revient en grand écran, on garantit que le menu de gauche
+    // réapparaît (sinon l'état pouvait rester "fermé" et le menu invisible).
+    React.useEffect(() => {
+      if (!isMobile) {
+        setOpenMobile(false);
+        if (!openProp) _setOpen(true);
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isMobile]);
+
     // We add a state so that we can do data-state="expanded" or "collapsed".
     // This makes it easier to style the sidebar with Tailwind classes.
     const state = open ? "expanded" : "collapsed";

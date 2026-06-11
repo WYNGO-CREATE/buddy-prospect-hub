@@ -92,7 +92,7 @@ export function AppSidebar() {
   // (onglet "Vue équipe") — plus besoin d'item séparé dans le menu.
 
   return (
-    <Sidebar collapsible="icon">
+    <Sidebar collapsible="offcanvas">
       <SidebarHeader>
         <div className="px-2 py-2 space-y-2">
           <BrandLogo size={32} wordmarkClassName="text-sidebar-foreground" />
