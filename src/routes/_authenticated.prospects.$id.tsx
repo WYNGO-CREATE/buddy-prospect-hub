@@ -39,9 +39,9 @@ function ProspectDetail() {
   const [editing, setEditing] = useState(false);
   // Onglet actif sur la section Activité (contrôlé pour la nav rapide depuis le haut de page)
   const [activeTab, setActiveTab] = useState<"comments" | "calls" | "followups" | "history">("comments");
-  const [callOpen, setCallOpen] = useState(false);
   const [followOpen, setFollowOpen] = useState(false);
   const [comment, setComment] = useState("");
+  const [debriefNote, setDebriefNote] = useState("");
 
   const { data: prospect, isLoading } = useQuery({
     queryKey: ["prospect", id],
@@ -153,24 +153,48 @@ function ProspectDetail() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const addCall = useMutation({
-    mutationFn: async (form: FormData) => {
-      const raw = Object.fromEntries(form.entries());
-      const { error } = await supabase.from("call_logs").insert({
-        prospect_id: id,
-        owner_id: user!.id,
-        called_at: raw.called_at ? new Date(String(raw.called_at)).toISOString() : new Date().toISOString(),
-        duration_minutes: raw.duration_minutes ? Number(raw.duration_minutes) : null,
-        outcome: String(raw.outcome || "") || null,
-        summary: String(raw.summary || "") || null,
+  // ─── Débrief d'appel rapide : note libre + résultat en 1 clic qui
+  //     automatise la suite (statut + relance), comme le mode session.
+  const DEBRIEF_OUTCOMES = {
+    interested: { label: "🤝 Intéressé / RDV", status: "interesse", followUpDays: 1, reason: "Suite à appel intéressé — confirmer / envoyer infos" },
+    callback:   { label: "🔁 À rappeler",      status: "a_relancer", followUpDays: 2, reason: "Rappeler (demandé pendant l'appel)" },
+    no_answer:  { label: "📵 Pas de réponse",  status: null as string | null, followUpDays: 2, reason: "Pas de réponse — réessayer" },
+    refused:    { label: "❌ Pas intéressé",   status: "perdu", followUpDays: null as number | null, reason: "" },
+    note:       { label: "📝 Simple note",     status: null as string | null, followUpDays: null as number | null, reason: "" },
+  } as const;
+  type DebriefKey = keyof typeof DEBRIEF_OUTCOMES;
+
+  const saveDebrief = useMutation({
+    mutationFn: async ({ note, outcome }: { note: string; outcome: DebriefKey }) => {
+      const cfg = DEBRIEF_OUTCOMES[outcome];
+      const nowISO = new Date().toISOString();
+      // 1. Journalise l'appel/note
+      const { error: e1 } = await supabase.from("call_logs").insert({
+        prospect_id: id, owner_id: user!.id, called_at: nowISO,
+        outcome, summary: note.trim() || null,
       });
-      if (error) throw error;
+      if (e1) throw e1;
+      // 2. Statut
+      if (cfg.status) {
+        await supabase.from("prospects").update({ status: cfg.status, updated_at: nowISO }).eq("id", id);
+      }
+      // 3. Relance auto
+      if (cfg.followUpDays != null) {
+        await supabase.from("follow_ups").insert({
+          prospect_id: id, owner_id: user!.id,
+          scheduled_at: new Date(Date.now() + cfg.followUpDays * 86_400_000).toISOString(),
+          reason: cfg.reason || (note.trim().slice(0, 80)), completed: false,
+        });
+      }
     },
-    onSuccess: () => {
+    onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ["calls", id] });
       qc.invalidateQueries({ queryKey: ["events", id] });
-      setCallOpen(false);
-      toast.success("Appel enregistré");
+      qc.invalidateQueries({ queryKey: ["prospect", id] });
+      qc.invalidateQueries({ queryKey: ["followups", id] });
+      setDebriefNote("");
+      const cfg = DEBRIEF_OUTCOMES[vars.outcome];
+      toast.success(`Débrief enregistré — ${cfg.label}${cfg.followUpDays != null ? " · relance programmée" : ""}`);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -758,45 +782,61 @@ function ProspectDetail() {
 
         <TabsContent value="calls" className="mt-4">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Appels & échanges</CardTitle>
-              <Dialog open={callOpen} onOpenChange={setCallOpen}>
-                <DialogTrigger asChild><Button size="sm">Ajouter</Button></DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Nouvel appel</DialogTitle>
-                    <DialogDescription>Enregistrer un échange téléphonique</DialogDescription>
-                  </DialogHeader>
-                  <form onSubmit={(e) => { e.preventDefault(); addCall.mutate(new FormData(e.currentTarget)); }} className="space-y-3">
-                    <div className="space-y-2"><Label>Date & heure</Label><Input name="called_at" type="datetime-local" defaultValue={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)} /></div>
-                    <div className="space-y-2"><Label>Durée (min)</Label><Input name="duration_minutes" type="number" min="0" /></div>
-                    <div className="space-y-2"><Label>Issue</Label><Input name="outcome" placeholder="Pas de réponse, RDV pris…" /></div>
-                    <div className="space-y-2"><Label>Résumé</Label><Textarea name="summary" rows={3} /></div>
-                    <DialogFooter><Button type="submit" disabled={addCall.isPending}>Enregistrer</Button></DialogFooter>
-                  </form>
-                </DialogContent>
-              </Dialog>
+            <CardHeader>
+              <CardTitle>Débrief d'appel</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Note ce qui s'est dit, puis choisis le résultat — la relance se programme toute seule.
+              </p>
             </CardHeader>
-            <CardContent>
-              {!calls || calls.length === 0 ? (
-                <p className="text-muted-foreground text-sm">Aucun appel enregistré.</p>
-              ) : (
-                <ul className="divide-y">
-                  {calls.map((c) => (
-                    <li key={c.id} className="py-3">
-                      <div className="flex justify-between text-sm">
-                        <span className="font-medium">{c.outcome || "Appel"}</span>
-                        <span className="text-muted-foreground">{format(new Date(c.called_at), "PPp", { locale: fr })}</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Par {profileName(c.owner_id)}
-                        {c.duration_minutes != null && ` · ${c.duration_minutes} min`}
-                      </p>
-                      {c.summary && <p className="text-sm mt-1 whitespace-pre-wrap">{c.summary}</p>}
-                    </li>
-                  ))}
-                </ul>
-              )}
+            <CardContent className="space-y-3">
+              {/* Composer débrief : note libre + résultat 1 clic */}
+              <Textarea
+                value={debriefNote}
+                onChange={(e) => setDebriefNote(e.target.value)}
+                rows={3}
+                placeholder="Ex : Joint la gérante, intéressée par l'aperçu mais veut en parler à son associé. Rappeler la semaine prochaine. Budget ok a priori."
+                className="resize-none"
+              />
+              <div className="flex flex-wrap gap-2">
+                {(Object.keys(DEBRIEF_OUTCOMES) as Array<keyof typeof DEBRIEF_OUTCOMES>).map((key) => (
+                  <Button
+                    key={key}
+                    size="sm"
+                    variant="outline"
+                    disabled={saveDebrief.isPending}
+                    onClick={() => saveDebrief.mutate({ note: debriefNote, outcome: key })}
+                    className="text-xs"
+                  >
+                    {DEBRIEF_OUTCOMES[key].label}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                💡 « Intéressé » programme une relance demain · « À rappeler » et « Pas de réponse » dans 2 jours · « Pas intéressé » classe en perdu.
+              </p>
+
+              {/* Historique des débriefs */}
+              <div className="pt-2 border-t">
+                {!calls || calls.length === 0 ? (
+                  <p className="text-muted-foreground text-sm py-2">Aucun appel enregistré pour l'instant.</p>
+                ) : (
+                  <ul className="divide-y">
+                    {calls.map((c) => (
+                      <li key={c.id} className="py-3">
+                        <div className="flex justify-between text-sm">
+                          <span className="font-medium">{outcomeLabel(c.outcome)}</span>
+                          <span className="text-muted-foreground">{format(new Date(c.called_at), "PPp", { locale: fr })}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Par {profileName(c.owner_id)}
+                          {c.duration_minutes != null && ` · ${c.duration_minutes} min`}
+                        </p>
+                        {c.summary && <p className="text-sm mt-1 whitespace-pre-wrap">{c.summary}</p>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -901,6 +941,20 @@ function ProspectDetail() {
       {/* CallModeDrawer retiré — Mode appel centralisé sur la page /scripts */}
     </div>
   );
+}
+
+// Libellé lisible pour l'issue d'un appel (clés canoniques + fallback ancien format)
+function outcomeLabel(outcome: string | null): string {
+  const map: Record<string, string> = {
+    interested: "🤝 Intéressé / RDV",
+    callback: "🔁 À rappeler",
+    no_answer: "📵 Pas de réponse",
+    refused: "❌ Pas intéressé",
+    note: "📝 Note",
+    logged_quick: "Appel",
+  };
+  if (!outcome) return "Appel";
+  return map[outcome] || outcome; // anciens logs en texte libre → tels quels
 }
 
 function formatPayload(type: string, payload: any) {
