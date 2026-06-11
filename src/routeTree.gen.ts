@@ -30,6 +30,7 @@ import { Route as AuthenticatedChasseRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedApolloRouteImport } from './routes/_authenticated.apollo'
 import { Route as AuthenticatedProspectsIndexRouteImport } from './routes/_authenticated.prospects.index'
 import { Route as AuthenticatedProspectsIdRouteImport } from './routes/_authenticated.prospects.$id'
+import { Route as AuthenticatedStudioSiteIdRouteImport } from './routes/_authenticated.studio.site.$id'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -137,6 +138,12 @@ const AuthenticatedProspectsIdRoute =
     path: '/prospects/$id',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedStudioSiteIdRoute =
+  AuthenticatedStudioSiteIdRouteImport.update({
+    id: '/site/$id',
+    path: '/site/$id',
+    getParentRoute: () => AuthenticatedStudioRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -152,13 +159,14 @@ export interface FileRoutesByFullPath {
   '/profil': typeof AuthenticatedProfilRoute
   '/relances': typeof AuthenticatedRelancesRoute
   '/scripts': typeof AuthenticatedScriptsRoute
-  '/studio': typeof AuthenticatedStudioRoute
+  '/studio': typeof AuthenticatedStudioRouteWithChildren
   '/tableau': typeof AuthenticatedTableauRoute
   '/templates': typeof AuthenticatedTemplatesRoute
   '/workflows': typeof AuthenticatedWorkflowsRoute
   '/auth/gmail-callback': typeof AuthGmailCallbackRoute
   '/prospects/$id': typeof AuthenticatedProspectsIdRoute
   '/prospects/': typeof AuthenticatedProspectsIndexRoute
+  '/studio/site/$id': typeof AuthenticatedStudioSiteIdRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -173,7 +181,7 @@ export interface FileRoutesByTo {
   '/profil': typeof AuthenticatedProfilRoute
   '/relances': typeof AuthenticatedRelancesRoute
   '/scripts': typeof AuthenticatedScriptsRoute
-  '/studio': typeof AuthenticatedStudioRoute
+  '/studio': typeof AuthenticatedStudioRouteWithChildren
   '/tableau': typeof AuthenticatedTableauRoute
   '/templates': typeof AuthenticatedTemplatesRoute
   '/workflows': typeof AuthenticatedWorkflowsRoute
@@ -181,6 +189,7 @@ export interface FileRoutesByTo {
   '/': typeof AuthenticatedIndexRoute
   '/prospects/$id': typeof AuthenticatedProspectsIdRoute
   '/prospects': typeof AuthenticatedProspectsIndexRoute
+  '/studio/site/$id': typeof AuthenticatedStudioSiteIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -197,7 +206,7 @@ export interface FileRoutesById {
   '/_authenticated/profil': typeof AuthenticatedProfilRoute
   '/_authenticated/relances': typeof AuthenticatedRelancesRoute
   '/_authenticated/scripts': typeof AuthenticatedScriptsRoute
-  '/_authenticated/studio': typeof AuthenticatedStudioRoute
+  '/_authenticated/studio': typeof AuthenticatedStudioRouteWithChildren
   '/_authenticated/tableau': typeof AuthenticatedTableauRoute
   '/_authenticated/templates': typeof AuthenticatedTemplatesRoute
   '/_authenticated/workflows': typeof AuthenticatedWorkflowsRoute
@@ -205,6 +214,7 @@ export interface FileRoutesById {
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/prospects/$id': typeof AuthenticatedProspectsIdRoute
   '/_authenticated/prospects/': typeof AuthenticatedProspectsIndexRoute
+  '/_authenticated/studio/site/$id': typeof AuthenticatedStudioSiteIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -229,6 +239,7 @@ export interface FileRouteTypes {
     | '/auth/gmail-callback'
     | '/prospects/$id'
     | '/prospects/'
+    | '/studio/site/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -251,6 +262,7 @@ export interface FileRouteTypes {
     | '/'
     | '/prospects/$id'
     | '/prospects'
+    | '/studio/site/$id'
   id:
     | '__root__'
     | '/_authenticated'
@@ -274,6 +286,7 @@ export interface FileRouteTypes {
     | '/_authenticated/'
     | '/_authenticated/prospects/$id'
     | '/_authenticated/prospects/'
+    | '/_authenticated/studio/site/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -432,8 +445,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProspectsIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/studio/site/$id': {
+      id: '/_authenticated/studio/site/$id'
+      path: '/site/$id'
+      fullPath: '/studio/site/$id'
+      preLoaderRoute: typeof AuthenticatedStudioSiteIdRouteImport
+      parentRoute: typeof AuthenticatedStudioRoute
+    }
   }
 }
+
+interface AuthenticatedStudioRouteChildren {
+  AuthenticatedStudioSiteIdRoute: typeof AuthenticatedStudioSiteIdRoute
+}
+
+const AuthenticatedStudioRouteChildren: AuthenticatedStudioRouteChildren = {
+  AuthenticatedStudioSiteIdRoute: AuthenticatedStudioSiteIdRoute,
+}
+
+const AuthenticatedStudioRouteWithChildren =
+  AuthenticatedStudioRoute._addFileChildren(AuthenticatedStudioRouteChildren)
 
 interface AuthenticatedRouteChildren {
   AuthenticatedApolloRoute: typeof AuthenticatedApolloRoute
@@ -446,7 +477,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedProfilRoute: typeof AuthenticatedProfilRoute
   AuthenticatedRelancesRoute: typeof AuthenticatedRelancesRoute
   AuthenticatedScriptsRoute: typeof AuthenticatedScriptsRoute
-  AuthenticatedStudioRoute: typeof AuthenticatedStudioRoute
+  AuthenticatedStudioRoute: typeof AuthenticatedStudioRouteWithChildren
   AuthenticatedTableauRoute: typeof AuthenticatedTableauRoute
   AuthenticatedTemplatesRoute: typeof AuthenticatedTemplatesRoute
   AuthenticatedWorkflowsRoute: typeof AuthenticatedWorkflowsRoute
@@ -466,7 +497,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedProfilRoute: AuthenticatedProfilRoute,
   AuthenticatedRelancesRoute: AuthenticatedRelancesRoute,
   AuthenticatedScriptsRoute: AuthenticatedScriptsRoute,
-  AuthenticatedStudioRoute: AuthenticatedStudioRoute,
+  AuthenticatedStudioRoute: AuthenticatedStudioRouteWithChildren,
   AuthenticatedTableauRoute: AuthenticatedTableauRoute,
   AuthenticatedTemplatesRoute: AuthenticatedTemplatesRoute,
   AuthenticatedWorkflowsRoute: AuthenticatedWorkflowsRoute,

@@ -14,7 +14,7 @@
  * achètera son domaine et on branchera Cloudflare for SaaS à ce moment-là.
  */
 
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -46,6 +46,7 @@ type Site = { id: string; prospect_id: string; title: string | null; slug: strin
 function StudioPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
+  const navigate = useNavigate();
 
   // Clients convertis (la source : Wyngo)
   const { data: clients } = useQuery({
@@ -99,17 +100,19 @@ function StudioPage() {
       const preview = previews?.get(client.id);
       const company = client.company || `${client.first_name} ${client.last_name}`.trim();
       const slug = `${slugify(company)}-${Math.random().toString(36).slice(2, 6)}`;
-      const { error } = await supabase.from("client_sites").insert({
+      const { data, error } = await supabase.from("client_sites").insert({
         prospect_id: client.id, owner_id: user!.id,
         preview_id: null, // on ne lie pas l'id ici (la maquette est retrouvée par prospect)
         title: company, slug, status: "draft",
         html_path: preview?.html_url || null,
-      });
+      }).select("id").single();
       if (error) throw error;
+      return data.id as string;
     },
-    onSuccess: () => {
+    onSuccess: (siteId) => {
       qc.invalidateQueries({ queryKey: ["studio-sites"] });
-      toast.success("Site créé — prêt à être produit 🚀");
+      toast.success("Site créé — ouverture de l'éditeur 🚀");
+      navigate({ to: "/studio/site/$id", params: { id: siteId } });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -210,6 +213,11 @@ function StudioPage() {
                       : "bg-sky-100 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300")}>
                       {s.status === "published" ? "En ligne" : "Brouillon"}
                     </Badge>
+                    <Button size="sm" className="gap-1 text-xs" asChild>
+                      <Link to="/studio/site/$id" params={{ id: s.id }}>
+                        <Wand2 className="size-3" /> Éditer
+                      </Link>
+                    </Button>
                     {previewUrl(s.prospect_id) && (
                       <Button size="sm" variant="outline" className="gap-1 text-xs" asChild>
                         <a href={previewUrl(s.prospect_id)!} target="_blank" rel="noreferrer">
@@ -217,9 +225,6 @@ function StudioPage() {
                         </a>
                       </Button>
                     )}
-                    <Button size="sm" variant="ghost" className="text-xs" asChild>
-                      <Link to="/prospects/$id" params={{ id: s.prospect_id }}>Fiche</Link>
-                    </Button>
                   </div>
                 </CardContent>
               </Card>
