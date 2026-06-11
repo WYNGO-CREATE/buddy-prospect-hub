@@ -30,6 +30,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/brand-logo";
 import { supabase } from "@/integrations/supabase/client";
+import { cn } from "@/lib/utils";
 
 export function AppSidebar() {
   const { role, user, signOut } = useAuth();
@@ -73,7 +74,13 @@ export function AppSidebar() {
   // (>30j sans interaction) sont désormais intégrés au cockpit /relances et
   // visibles via le smart-tag "Froid" sur la fiche prospect.
 
-  const items: Array<{ title: string; url: string; icon: typeof Users; badge: number }> = [
+  type NavItem = { title: string; url: string; icon: typeof Users; badge: number };
+
+  // ── Deux univers distincts : Prospection (Wyngo) et Studio (production) ──
+  const activeWorkspace: "prospection" | "studio" =
+    currentPath.startsWith("/studio") ? "studio" : "prospection";
+
+  const prospectionItems: NavItem[] = [
     { title: "Tableau de bord", url: "/tableau", icon: LayoutDashboard, badge: 0 },
     { title: "Inbox", url: "/inbox", icon: Inbox, badge: unreadCount },
     { title: "Prospects", url: "/prospects", icon: Users, badge: 0 },
@@ -82,16 +89,34 @@ export function AppSidebar() {
     { title: "Génération d'emails", url: "/templates", icon: Sparkles, badge: 0 },
     { title: "Scripts d'appel", url: "/scripts", icon: Headphones, badge: 0 },
     { title: "Chasse aux prospects", url: "/chasse", icon: Target, badge: 0 },
-    { title: "Studio", url: "/studio", icon: Rocket, badge: 0 },
   ];
-  if (role === "admin") {
-    items.push({ title: "Équipe", url: "/equipe", icon: UserCog, badge: 0 });
-  }
-  // Mon profil placé après Équipe (admin) pour respecter l'ordre :
-  // outils opérationnels → admin équipe → préférences perso.
-  items.push({ title: "Mon profil", url: "/profil", icon: User, badge: 0 });
-  // Le Journal d'activité est désormais intégré au Tableau de bord
-  // (onglet "Vue équipe") — plus besoin d'item séparé dans le menu.
+
+  const studioItems: NavItem[] = [
+    { title: "Production", url: "/studio", icon: Rocket, badge: 0 },
+  ];
+
+  const mainItems = activeWorkspace === "studio" ? studioItems : prospectionItems;
+
+  // Items "compte", communs aux deux univers
+  const accountItems: NavItem[] = [];
+  if (role === "admin") accountItems.push({ title: "Équipe", url: "/equipe", icon: UserCog, badge: 0 });
+  accountItems.push({ title: "Mon profil", url: "/profil", icon: User, badge: 0 });
+
+  const renderItem = (item: NavItem) => (
+    <SidebarMenuItem key={item.url}>
+      <SidebarMenuButton asChild isActive={isActive(item.url)}>
+        <Link to={item.url} className="flex items-center gap-2">
+          <item.icon className="h-4 w-4" />
+          <span className="flex-1">{item.title}</span>
+          {item.badge > 0 && (
+            <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full bg-rose-500 text-white font-semibold min-w-[18px] text-center">
+              {item.badge > 99 ? "99+" : item.badge}
+            </span>
+          )}
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
 
   return (
     <Sidebar collapsible="offcanvas">
@@ -109,26 +134,45 @@ export function AppSidebar() {
         </div>
       </SidebarHeader>
       <SidebarContent>
+        {/* ── Sélecteur d'univers : Prospection ↔ Studio ── */}
+        <div className="px-2 pt-1 pb-2">
+          <div className="grid grid-cols-2 gap-1 rounded-lg bg-sidebar-accent/40 p-1">
+            <Link
+              to="/tableau"
+              className={cn(
+                "flex items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-semibold transition",
+                activeWorkspace === "prospection"
+                  ? "bg-sidebar text-sidebar-foreground shadow-sm ring-1 ring-sidebar-border"
+                  : "text-sidebar-foreground/60 hover:text-sidebar-foreground",
+              )}
+            >
+              <Target className="h-3.5 w-3.5" /> Prospection
+            </Link>
+            <Link
+              to="/studio"
+              className={cn(
+                "flex items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-semibold transition",
+                activeWorkspace === "studio"
+                  ? "bg-sidebar text-sidebar-foreground shadow-sm ring-1 ring-sidebar-border"
+                  : "text-sidebar-foreground/60 hover:text-sidebar-foreground",
+              )}
+            >
+              <Rocket className="h-3.5 w-3.5" /> Studio
+            </Link>
+          </div>
+        </div>
+
         <SidebarGroup>
-          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+          <SidebarGroupLabel>{activeWorkspace === "studio" ? "Studio — Production" : "Prospection"}</SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu>
-              {items.map((item) => (
-                <SidebarMenuItem key={item.url}>
-                  <SidebarMenuButton asChild isActive={isActive(item.url)}>
-                    <Link to={item.url} className="flex items-center gap-2">
-                      <item.icon className="h-4 w-4" />
-                      <span className="flex-1">{item.title}</span>
-                      {item.badge > 0 && (
-                        <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full bg-rose-500 text-white font-semibold min-w-[18px] text-center">
-                          {item.badge > 99 ? "99+" : item.badge}
-                        </span>
-                      )}
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
+            <SidebarMenu>{mainItems.map(renderItem)}</SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Compte</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>{accountItems.map(renderItem)}</SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
