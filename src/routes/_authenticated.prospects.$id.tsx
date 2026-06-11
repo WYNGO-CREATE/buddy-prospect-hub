@@ -19,6 +19,7 @@ import { InstantPreviewDialog } from "@/components/instant-preview-dialog";
 import { PreviewBriefCard } from "@/components/preview-brief-card";
 import { ProspectBriefingCard } from "@/components/prospect-briefing-card";
 import { ProspectEmailCard } from "@/components/prospect-email-card";
+import { CallDebrief } from "@/components/call-debrief";
 import { findTradeByNaf } from "@/lib/trades-catalog";
 import { Briefcase } from "lucide-react";
 import { PROSPECT_STATUSES, STATUS_LABELS, STATUS_VARIANTS, EVENT_LABELS, type ProspectStatus } from "@/lib/crm";
@@ -41,7 +42,6 @@ function ProspectDetail() {
   const [activeTab, setActiveTab] = useState<"comments" | "calls" | "followups" | "history">("comments");
   const [followOpen, setFollowOpen] = useState(false);
   const [comment, setComment] = useState("");
-  const [debriefNote, setDebriefNote] = useState("");
 
   const { data: prospect, isLoading } = useQuery({
     queryKey: ["prospect", id],
@@ -153,77 +153,8 @@ function ProspectDetail() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  // ─── Débrief d'appel rapide : note libre + résultat en 1 clic qui
-  //     automatise la suite (statut + relance), comme le mode session.
-  const DEBRIEF_OUTCOMES = {
-    interested: { label: "🤝 Intéressé / RDV", status: "interesse", followUpDays: 1, reason: "Suite à appel intéressé — confirmer / envoyer infos" },
-    callback:   { label: "🔁 À rappeler",      status: "a_relancer", followUpDays: 2, reason: "Rappeler (demandé pendant l'appel)" },
-    no_answer:  { label: "📵 Pas de réponse",  status: null as string | null, followUpDays: 2, reason: "Pas de réponse — réessayer" },
-    refused:    { label: "❌ Pas intéressé",   status: "perdu", followUpDays: null as number | null, reason: "" },
-    note:       { label: "📝 Simple note",     status: null as string | null, followUpDays: null as number | null, reason: "" },
-  } as const;
-  type DebriefKey = keyof typeof DEBRIEF_OUTCOMES;
-
-  const saveDebrief = useMutation({
-    mutationFn: async ({ note, outcome, followUpDaysOverride, followUpReasonOverride }: {
-      note: string; outcome: DebriefKey;
-      followUpDaysOverride?: number | null; followUpReasonOverride?: string;
-    }) => {
-      const cfg = DEBRIEF_OUTCOMES[outcome];
-      const nowISO = new Date().toISOString();
-      // Le délai de relance peut venir de l'IA (override) ou de la config par défaut
-      const days = followUpDaysOverride !== undefined ? followUpDaysOverride : cfg.followUpDays;
-      const reason = followUpReasonOverride || cfg.reason || note.trim().slice(0, 80);
-      // 1. Journalise l'appel/note
-      const { error: e1 } = await supabase.from("call_logs").insert({
-        prospect_id: id, owner_id: user!.id, called_at: nowISO,
-        outcome, summary: note.trim() || null,
-      });
-      if (e1) throw e1;
-      // 2. Statut
-      if (cfg.status) {
-        await supabase.from("prospects").update({ status: cfg.status, updated_at: nowISO }).eq("id", id);
-      }
-      // 3. Relance auto
-      if (days != null) {
-        await supabase.from("follow_ups").insert({
-          prospect_id: id, owner_id: user!.id,
-          scheduled_at: new Date(Date.now() + days * 86_400_000).toISOString(),
-          reason, completed: false,
-        });
-      }
-    },
-    onSuccess: (_d, vars) => {
-      qc.invalidateQueries({ queryKey: ["calls", id] });
-      qc.invalidateQueries({ queryKey: ["events", id] });
-      qc.invalidateQueries({ queryKey: ["prospect", id] });
-      qc.invalidateQueries({ queryKey: ["followups", id] });
-      setDebriefNote("");
-      setAiSuggestion(null);
-      const cfg = DEBRIEF_OUTCOMES[vars.outcome];
-      const hasFu = (vars.followUpDaysOverride !== undefined ? vars.followUpDaysOverride : cfg.followUpDays) != null;
-      toast.success(`Débrief enregistré — ${cfg.label}${hasFu ? " · relance programmée" : ""}`);
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  // ─── Analyse IA du débrief : extrait résultat + prochaine action ───
-  type AiSuggestion = { outcome: DebriefKey; summary: string; next_action: string; follow_up_days: number | null };
-  const [aiSuggestion, setAiSuggestion] = useState<AiSuggestion | null>(null);
-  const analyzeDebrief = useMutation({
-    mutationFn: async (note: string): Promise<AiSuggestion> => {
-      const { data, error } = await supabase.functions.invoke("debrief-analyze", {
-        body: { note, prospect: { first_name: prospect?.first_name, company: prospect?.company, status: prospect?.status } },
-      });
-      if (error) throw new Error(error.message);
-      if (!data?.ok) throw new Error(data?.error || "Analyse impossible");
-      const valid: DebriefKey[] = ["interested", "callback", "no_answer", "refused", "note"];
-      const outcome: DebriefKey = valid.includes(data.outcome) ? data.outcome : "note";
-      return { outcome, summary: data.summary || "", next_action: data.next_action || "", follow_up_days: data.follow_up_days ?? null };
-    },
-    onSuccess: (s) => setAiSuggestion(s),
-    onError: (e: Error) => toast.error("IA : " + e.message),
-  });
+  // Le débrief d'appel (texte + vocal + IA + coaching) est encapsulé dans
+  // le composant <CallDebrief> — voir src/components/call-debrief.tsx.
 
   // Toggle rapide "appelé" / "pas appelé" pour le badge du header.
   // S'il y a au moins 1 appel logué → on supprime tout (revient à "non appelé").
@@ -811,86 +742,14 @@ function ProspectDetail() {
             <CardHeader>
               <CardTitle>Débrief d'appel</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Note ce qui s'est dit, puis choisis le résultat — la relance se programme toute seule.
+                Écris ou <strong>parle</strong> ton débrief 🎙️ — l'IA remplit le résultat, programme la relance et te coache.
               </p>
             </CardHeader>
             <CardContent className="space-y-3">
-              {/* Composer débrief : note libre + résultat 1 clic */}
-              <Textarea
-                value={debriefNote}
-                onChange={(e) => { setDebriefNote(e.target.value); if (aiSuggestion) setAiSuggestion(null); }}
-                rows={3}
-                placeholder="Ex : Joint la gérante, intéressée par l'aperçu mais veut en parler à son associé. Rappeler la semaine prochaine. Budget ok a priori."
-                className="resize-none"
+              <CallDebrief
+                prospectId={id}
+                prospect={{ first_name: prospect.first_name, company: prospect.company, status: prospect.status }}
               />
-
-              {/* Bouton analyse IA */}
-              <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  disabled={!debriefNote.trim() || analyzeDebrief.isPending}
-                  onClick={() => analyzeDebrief.mutate(debriefNote)}
-                  className="gap-1.5 bg-gradient-to-r from-primary to-violet-600 hover:from-primary/90 hover:to-violet-700 text-white"
-                >
-                  {analyzeDebrief.isPending ? <Wand2 className="h-3.5 w-3.5 animate-pulse" /> : <Sparkles className="h-3.5 w-3.5" />}
-                  {analyzeDebrief.isPending ? "Analyse…" : "Analyser avec l'IA"}
-                </Button>
-                <span className="text-[11px] text-muted-foreground">écris en vrac, l'IA extrait le résultat + la relance</span>
-              </div>
-
-              {/* Carte de suggestion IA */}
-              {aiSuggestion && (
-                <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] uppercase tracking-wider font-bold text-primary inline-flex items-center gap-1">
-                      <Sparkles className="h-3 w-3" /> Analyse IA
-                    </p>
-                    <span className="text-xs font-semibold">{DEBRIEF_OUTCOMES[aiSuggestion.outcome].label}</span>
-                  </div>
-                  {aiSuggestion.summary && <p className="text-sm">{aiSuggestion.summary}</p>}
-                  <div className="text-xs space-y-0.5 text-muted-foreground">
-                    <p>👉 <span className="font-medium text-foreground">Prochaine action :</span> {aiSuggestion.next_action}</p>
-                    <p>📅 {aiSuggestion.follow_up_days != null ? `Relance programmée dans ${aiSuggestion.follow_up_days} jour${aiSuggestion.follow_up_days > 1 ? "s" : ""}` : "Pas de relance"}</p>
-                  </div>
-                  <div className="flex gap-2 pt-1">
-                    <Button
-                      size="sm"
-                      disabled={saveDebrief.isPending}
-                      onClick={() => saveDebrief.mutate({
-                        note: debriefNote,
-                        outcome: aiSuggestion.outcome,
-                        followUpDaysOverride: aiSuggestion.follow_up_days,
-                        followUpReasonOverride: aiSuggestion.next_action,
-                      })}
-                      className="gap-1.5"
-                    >
-                      <Check className="h-3.5 w-3.5" /> Valider & enregistrer
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => setAiSuggestion(null)} className="text-muted-foreground">
-                      Ignorer
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {/* Résultat manuel (alternative à l'IA) */}
-              <div className="flex flex-wrap gap-2">
-                {(Object.keys(DEBRIEF_OUTCOMES) as Array<keyof typeof DEBRIEF_OUTCOMES>).map((key) => (
-                  <Button
-                    key={key}
-                    size="sm"
-                    variant="outline"
-                    disabled={saveDebrief.isPending}
-                    onClick={() => saveDebrief.mutate({ note: debriefNote, outcome: key })}
-                    className="text-xs"
-                  >
-                    {DEBRIEF_OUTCOMES[key].label}
-                  </Button>
-                ))}
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                💡 Sans IA : « Intéressé » → relance demain · « À rappeler »/« Pas de réponse » → 2 jours · « Pas intéressé » → perdu.
-              </p>
 
               {/* Historique des débriefs */}
               <div className="pt-2 border-t">
