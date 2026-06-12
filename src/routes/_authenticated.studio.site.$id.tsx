@@ -12,12 +12,12 @@
 
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Sparkles, Wand2, Loader2, Rocket, ExternalLink, Monitor, Smartphone } from "lucide-react";
+import { ArrowLeft, Sparkles, Wand2, Loader2, Rocket, Monitor, Smartphone, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -42,8 +42,10 @@ function SiteEditor() {
   const { id } = Route.useParams();
   const qc = useQueryClient();
   const [html, setHtml] = useState<string>("");
+  const [prevHtml, setPrevHtml] = useState<string | null>(null); // undo 1 étape
   const [instruction, setInstruction] = useState("");
   const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
+  const initedFor = useRef<string | null>(null); // init unique par site (évite l'écrasement)
 
   const { data: site, isLoading } = useQuery({
     queryKey: ["studio-site", id],
@@ -53,9 +55,12 @@ function SiteEditor() {
     },
   });
 
-  // Charge le HTML initial : travail existant, sinon la maquette
+  // Charge le HTML initial UNE SEULE FOIS par site (travail existant, sinon
+  // la maquette). On ne ré-initialise pas si la query se rafraîchit, sinon
+  // une édition en cours serait écrasée.
   useEffect(() => {
-    if (!site) return;
+    if (!site || initedFor.current === id) return;
+    initedFor.current = id;
     if (site.html) { setHtml(site.html); return; }
     (async () => {
       const { data: prev } = await supabase.from("prospect_previews")
@@ -63,7 +68,18 @@ function SiteEditor() {
       const url = prev?.html_url || (prev?.slug ? `${APP_URL}/p/${prev.slug}` : null);
       if (url) { try { const r = await fetch(url); if (r.ok) setHtml(await r.text()); } catch { /* */ } }
     })();
-  }, [site]);
+  }, [site, id]);
+
+  // Undo : restaure la version précédente (local + DB)
+  const undo = useMutation({
+    mutationFn: async () => {
+      if (prevHtml == null) return;
+      await supabase.from("client_sites").update({ html: prevHtml, updated_at: new Date().toISOString() }).eq("id", id);
+      return prevHtml;
+    },
+    onSuccess: (restored) => { if (restored != null) { setHtml(restored); setPrevHtml(null); toast.success("Modification annulée"); } },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const edit = useMutation({
     mutationFn: async (instr: string) => {
@@ -72,11 +88,12 @@ function SiteEditor() {
       if (!data?.ok) throw new Error(data?.error || "Modification impossible");
       return data as { html: string; applied: number; skipped: number; summary: string };
     },
+    onMutate: () => { setPrevHtml(html); }, // mémorise pour l'undo
     onSuccess: (d) => {
       setHtml(d.html);
       setInstruction("");
       if (d.applied > 0) toast.success(`Modifié : ${d.summary || "site mis à jour"}`);
-      else toast.warning(d.summary || "Aucune modification appliquée — reformule ta demande.");
+      else { setPrevHtml(null); toast.warning(d.summary || "Aucune modification appliquée — reformule ta demande."); }
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -108,6 +125,11 @@ function SiteEditor() {
           </Badge>
         </div>
         <div className="flex items-center gap-1.5">
+          {prevHtml != null && (
+            <Button variant="ghost" size="sm" className="gap-1 text-xs" onClick={() => undo.mutate()} disabled={undo.isPending} title="Annuler la dernière modification">
+              <Undo2 className="h-3.5 w-3.5" /> Annuler
+            </Button>
+          )}
           <div className="flex rounded-md border overflow-hidden mr-1">
             <button onClick={() => setDevice("desktop")} className={cn("px-2 py-1.5", device === "desktop" ? "bg-muted" : "hover:bg-muted/50")} title="Bureau"><Monitor className="h-3.5 w-3.5" /></button>
             <button onClick={() => setDevice("mobile")} className={cn("px-2 py-1.5", device === "mobile" ? "bg-muted" : "hover:bg-muted/50")} title="Mobile"><Smartphone className="h-3.5 w-3.5" /></button>

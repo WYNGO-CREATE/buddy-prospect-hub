@@ -20,6 +20,7 @@ function json(b: unknown, s = 200) { return new Response(JSON.stringify(b), { st
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const HF_KEY = Deno.env.get("HIGGSFIELD_API_KEY");
 const HF_SECRET = Deno.env.get("HIGGSFIELD_API_SECRET");
 const HF_BASE = "https://platform.higgsfield.ai";
@@ -77,9 +78,16 @@ Deno.serve(async (req) => {
     const { teaser_id } = await req.json();
     if (!teaser_id) return json({ ok: false, error: "teaser_id requis" }, 400);
 
+    const authHeader = req.headers.get("Authorization") || "";
+    const userClient = createClient(SUPABASE_URL, ANON_KEY, { global: { headers: { Authorization: authHeader } } });
+    const { data: u } = await userClient.auth.getUser();
+    const uid = u?.user?.id;
+    if (!uid) return json({ ok: false, error: "Non authentifié" }, 401);
+
     const admin = createClient(SUPABASE_URL, SERVICE_KEY);
     const { data: row } = await admin.from("prospect_teasers").select("*").eq("id", teaser_id).maybeSingle();
     if (!row) return json({ ok: false, error: "Téaser introuvable" }, 404);
+    if (row.owner_id !== uid) return json({ ok: false, error: "Accès refusé" }, 403);
     if (row.status === "done") return json({ ok: true, status: "done", video_url: row.video_url });
     if (row.status === "failed") return json({ ok: true, status: "failed", error: row.error });
     if (!row.generation_id) return json({ ok: true, status: "processing" });

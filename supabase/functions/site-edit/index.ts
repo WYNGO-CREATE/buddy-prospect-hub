@@ -30,6 +30,7 @@ const ANTHROPIC_MODEL = Deno.env.get("ANTHROPIC_MODEL") ?? "claude-sonnet-4-5-20
 const GEMINI_MODEL = Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
 type Edit = { find: string; replace: string };
 
@@ -101,9 +102,17 @@ Deno.serve(async (req) => {
     const { site_id, instruction } = await req.json();
     if (!site_id || !instruction?.trim()) return json({ ok: false, error: "site_id et instruction requis" }, 400);
 
+    // Contrôle de propriété : seul le propriétaire du site peut l'éditer.
+    const authHeader = req.headers.get("Authorization") || "";
+    const userClient = createClient(SUPABASE_URL, ANON_KEY, { global: { headers: { Authorization: authHeader } } });
+    const { data: u } = await userClient.auth.getUser();
+    const uid = u?.user?.id;
+    if (!uid) return json({ ok: false, error: "Non authentifié" }, 401);
+
     const admin = createClient(SUPABASE_URL, SERVICE_KEY);
-    const { data: site } = await admin.from("client_sites").select("id, html, preview_id, prospect_id").eq("id", site_id).maybeSingle();
+    const { data: site } = await admin.from("client_sites").select("id, html, preview_id, prospect_id, owner_id").eq("id", site_id).maybeSingle();
     if (!site) return json({ ok: false, error: "Site introuvable" }, 404);
+    if (site.owner_id !== uid) return json({ ok: false, error: "Accès refusé" }, 403);
 
     // Charge le HTML de travail (ou initialise depuis la maquette)
     let html: string | null = site.html;

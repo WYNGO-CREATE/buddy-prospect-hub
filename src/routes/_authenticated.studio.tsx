@@ -174,8 +174,8 @@ function StudioPage() {
                     ) : (
                       <p className="text-xs text-amber-600 dark:text-amber-400">⚠️ Pas encore de maquette — génère un Aperçu sur sa fiche d'abord.</p>
                     )}
-                    <Button size="sm" className="w-full gap-1.5" disabled={createSite.isPending}
-                      onClick={() => createSite.mutate(c)}>
+                    <Button size="sm" className="w-full gap-1.5" disabled={createSite.isPending || !hasPreview}
+                      onClick={() => createSite.mutate(c)} title={!hasPreview ? "Génère d'abord une maquette (Aperçu) sur la fiche" : undefined}>
                       <PlusCircle className="size-3.5" /> Créer le site
                     </Button>
                   </CardContent>

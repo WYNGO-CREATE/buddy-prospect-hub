@@ -51,12 +51,21 @@ export function ProspectTeaser({
     onError: (e: Error) => toast.error(e.message),
   });
 
-  // Polling : tant que le téaser est "processing", on tape teaser-status
+  // Polling : tant que le téaser est "processing", on tape teaser-status.
+  // Plafonné à 40 tentatives (~4 min) pour ne JAMAIS poller à l'infini si
+  // le job reste bloqué (crédits manquants, panne provider…).
   useEffect(() => {
     const isProcessing = teaser?.status === "processing";
     if (isProcessing && teaser) {
       if (pollRef.current) clearInterval(pollRef.current);
+      let attempts = 0;
       pollRef.current = window.setInterval(async () => {
+        attempts += 1;
+        if (attempts > 40) {
+          if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+          toast.message("La génération prend plus de temps que prévu — reviens vérifier plus tard.");
+          return;
+        }
         try {
           await supabase.functions.invoke("teaser-status", { body: { teaser_id: teaser.id } });
           qc.invalidateQueries({ queryKey: ["teaser", prospectId] });
