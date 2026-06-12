@@ -20,6 +20,7 @@ import { PreviewBriefCard } from "@/components/preview-brief-card";
 import { ProspectBriefingCard } from "@/components/prospect-briefing-card";
 import { ProspectEmailCard } from "@/components/prospect-email-card";
 import { CallDebrief } from "@/components/call-debrief";
+import { CallPrep } from "@/components/call-prep";
 import { findTradeByNaf } from "@/lib/trades-catalog";
 import { Briefcase } from "lucide-react";
 import { PROSPECT_STATUSES, STATUS_LABELS, STATUS_VARIANTS, EVENT_LABELS, type ProspectStatus } from "@/lib/crm";
@@ -415,6 +416,9 @@ function ProspectDetail() {
           </div>
         </CardContent>
       </Card>
+
+      {/* ─── Préparation d'appel IA (brief + accroche taillée) ─── */}
+      <CallPrep prospectId={prospect.id} />
 
       {/* ═══ NAV RAPIDE Activité ═══
           Raccourcis vers les 4 onglets en bas (Discussion / Appels / Relances /
