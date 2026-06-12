@@ -660,59 +660,6 @@ export type Database = {
           },
         ]
       }
-      prospect_teasers: {
-        Row: {
-          created_at: string
-          error: string | null
-          generation_id: string | null
-          id: string
-          owner_id: string
-          prompt: string | null
-          prospect_id: string
-          provider: string
-          source_image_url: string | null
-          status: string
-          updated_at: string
-          video_url: string | null
-        }
-        Insert: {
-          created_at?: string
-          error?: string | null
-          generation_id?: string | null
-          id?: string
-          owner_id: string
-          prompt?: string | null
-          prospect_id: string
-          provider?: string
-          source_image_url?: string | null
-          status?: string
-          updated_at?: string
-          video_url?: string | null
-        }
-        Update: {
-          created_at?: string
-          error?: string | null
-          generation_id?: string | null
-          id?: string
-          owner_id?: string
-          prompt?: string | null
-          prospect_id?: string
-          provider?: string
-          source_image_url?: string | null
-          status?: string
-          updated_at?: string
-          video_url?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "prospect_teasers_prospect_id_fkey"
-            columns: ["prospect_id"]
-            isOneToOne: false
-            referencedRelation: "prospects"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       prospects: {
         Row: {
           apollo_id: string | null

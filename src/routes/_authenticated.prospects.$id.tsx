@@ -20,7 +20,6 @@ import { PreviewBriefCard } from "@/components/preview-brief-card";
 import { ProspectBriefingCard } from "@/components/prospect-briefing-card";
 import { ProspectEmailCard } from "@/components/prospect-email-card";
 import { CallDebrief } from "@/components/call-debrief";
-import { ProspectTeaser } from "@/components/prospect-teaser";
 import { findTradeByNaf } from "@/lib/trades-catalog";
 import { Briefcase } from "lucide-react";
 import { PROSPECT_STATUSES, STATUS_LABELS, STATUS_VARIANTS, EVENT_LABELS, type ProspectStatus } from "@/lib/crm";
@@ -627,13 +626,6 @@ function ProspectDetail() {
         }}
       />
 
-      {/* ─── Bande-annonce vidéo IA (Higgsfield) ─── */}
-      <ProspectTeaser
-        prospectId={prospect.id}
-        firstName={prospect.first_name}
-        company={prospect.company}
-        phone={prospect.phone}
-      />
 
       {/* ═══ ONGLETS PROEMINENT — Discussion, Appels, Relances, Historique ═══
           Ces 4 sections sont les hubs d'activité quotidienne sur un prospect.
