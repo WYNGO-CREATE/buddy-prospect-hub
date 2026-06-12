@@ -24,7 +24,7 @@ type FinderResult = {
   email_source: "scraper" | "hunter" | "web_search" | "pattern" | "domain_discovery" | null;
   sources_tried: string[];
   candidates: Array<{ email: string; source: string; status: string; confidence: number }>;
-  debug?: { web_queries?: string[]; web_emails_raw_count?: number; live_domains?: string[]; checked_domains?: number };
+  debug?: { web_queries?: string[]; web_emails_raw_count?: number; live_domains?: string[]; checked_domains?: number; dropcontact?: { credits_left?: number; error?: string } };
   duration_ms: number;
 };
 

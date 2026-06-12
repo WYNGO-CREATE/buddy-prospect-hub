@@ -17,7 +17,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Sparkles, Wand2, Loader2, Rocket, Monitor, Smartphone, Undo2 } from "lucide-react";
+import { ArrowLeft, Sparkles, Wand2, Loader2, Rocket, Monitor, Smartphone, Undo2, Maximize2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -134,6 +134,10 @@ function SiteEditor() {
             <button onClick={() => setDevice("desktop")} className={cn("px-2 py-1.5", device === "desktop" ? "bg-muted" : "hover:bg-muted/50")} title="Bureau"><Monitor className="h-3.5 w-3.5" /></button>
             <button onClick={() => setDevice("mobile")} className={cn("px-2 py-1.5", device === "mobile" ? "bg-muted" : "hover:bg-muted/50")} title="Mobile"><Smartphone className="h-3.5 w-3.5" /></button>
           </div>
+          <Button variant="ghost" size="sm" className="gap-1 text-xs" disabled={!html} title="Voir le site en plein écran"
+            onClick={() => { const b = new Blob([html], { type: "text/html" }); window.open(URL.createObjectURL(b), "_blank"); }}>
+            <Maximize2 className="h-3.5 w-3.5" /> Plein écran
+          </Button>
           <Button size="sm" onClick={() => publish.mutate()} disabled={publish.isPending || !html} className="gap-1.5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white">
             {publish.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Rocket className="h-3.5 w-3.5" />} Publier
           </Button>

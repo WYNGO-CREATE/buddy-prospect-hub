@@ -147,7 +147,7 @@ export function CallDebrief({
         prospect_id: prospectId, owner_id: user!.id, called_at: nowISO, outcome, summary: summary || null,
       });
       if (e1) throw e1;
-      if (cfg.status) await supabase.from("prospects").update({ status: cfg.status, updated_at: nowISO }).eq("id", prospectId);
+      if (cfg.status) await supabase.from("prospects").update({ status: cfg.status as "interesse" | "a_relancer" | "perdu", updated_at: nowISO }).eq("id", prospectId);
       if (days != null) {
         await supabase.from("follow_ups").insert({
           prospect_id: prospectId, owner_id: user!.id,

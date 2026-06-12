@@ -86,7 +86,7 @@ type Prospect = {
 };
 
 type ItemBase = {
-  id: string;
+  id?: string;
   prospect: Prospect;
   meta?: React.ReactNode;
 };
@@ -136,9 +136,9 @@ function CockpitPage() {
       //    On les considère comme un "échange" du prospect à classifier.
       const { data: calls } = await supabase
         .from("call_logs")
-        .select("id, notes, called_at, prospect_id, prospects(id, first_name, last_name, company, email, phone, status, updated_at)")
+        .select("id, summary, called_at, prospect_id, prospects(id, first_name, last_name, company, email, phone, status, updated_at)")
         .gt("called_at", isoMinusDays(7))
-        .not("notes", "is", null)
+        .not("summary", "is", null)
         .order("called_at", { ascending: false })
         .limit(40);
 
@@ -165,10 +165,10 @@ function CockpitPage() {
       }));
 
       const fromCalls: UnifiedReply[] = (calls || [])
-        .filter((c) => c.notes && c.notes.trim().length > 5)
+        .filter((c) => c.summary && c.summary.trim().length > 5)
         .map((c) => ({
           id: `call-${c.id}`,
-          content: c.notes!,
+          content: c.summary!,
           occurred_at: c.called_at,
           is_read: true, // les notes d'appel sont par définition "lues" par l'auteur
           channel: "call",

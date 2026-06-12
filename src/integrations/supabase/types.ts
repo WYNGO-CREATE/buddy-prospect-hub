@@ -12,16 +12,44 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       agency_settings: {
         Row: {
           activity: string | null
           business_brief: string | null
+          call_donts: string | null
+          call_dos: string | null
           default_tone: string | null
           id: boolean
           logo_url: string | null
           name: string
+          philosophy: string | null
           target_client: string | null
           updated_at: string
           value_props: string | null
@@ -30,10 +58,13 @@ export type Database = {
         Insert: {
           activity?: string | null
           business_brief?: string | null
+          call_donts?: string | null
+          call_dos?: string | null
           default_tone?: string | null
           id?: boolean
           logo_url?: string | null
           name?: string
+          philosophy?: string | null
           target_client?: string | null
           updated_at?: string
           value_props?: string | null
@@ -42,10 +73,13 @@ export type Database = {
         Update: {
           activity?: string | null
           business_brief?: string | null
+          call_donts?: string | null
+          call_dos?: string | null
           default_tone?: string | null
           id?: boolean
           logo_url?: string | null
           name?: string
+          philosophy?: string | null
           target_client?: string | null
           updated_at?: string
           value_props?: string | null
@@ -175,6 +209,72 @@ export type Database = {
         }
         Relationships: []
       }
+      client_sites: {
+        Row: {
+          created_at: string
+          custom_domain: string | null
+          domain_status: string | null
+          html: string | null
+          html_path: string | null
+          id: string
+          owner_id: string
+          preview_id: string | null
+          prospect_id: string
+          published_at: string | null
+          slug: string | null
+          status: string
+          title: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          custom_domain?: string | null
+          domain_status?: string | null
+          html?: string | null
+          html_path?: string | null
+          id?: string
+          owner_id: string
+          preview_id?: string | null
+          prospect_id: string
+          published_at?: string | null
+          slug?: string | null
+          status?: string
+          title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          custom_domain?: string | null
+          domain_status?: string | null
+          html?: string | null
+          html_path?: string | null
+          id?: string
+          owner_id?: string
+          preview_id?: string | null
+          prospect_id?: string
+          published_at?: string | null
+          slug?: string | null
+          status?: string
+          title?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_sites_preview_id_fkey"
+            columns: ["preview_id"]
+            isOneToOne: false
+            referencedRelation: "prospect_previews"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_sites_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "prospects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       email_templates: {
         Row: {
           body: string
@@ -208,6 +308,36 @@ export type Database = {
           owner_id?: string
           subject?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      email_verifications: {
+        Row: {
+          details: Json | null
+          email: string
+          expires_at: string
+          provider: string
+          raw_result: string | null
+          status: string
+          verified_at: string
+        }
+        Insert: {
+          details?: Json | null
+          email: string
+          expires_at?: string
+          provider?: string
+          raw_result?: string | null
+          status: string
+          verified_at?: string
+        }
+        Update: {
+          details?: Json | null
+          email?: string
+          expires_at?: string
+          provider?: string
+          raw_result?: string | null
+          status?: string
+          verified_at?: string
         }
         Relationships: []
       }
@@ -310,7 +440,10 @@ export type Database = {
           is_read: boolean
           occurred_at: string
           owner_id: string
-          prospect_id: string
+          prospect_id: string | null
+          recipient_email: string | null
+          sender_email: string | null
+          sender_name: string | null
           source: string
           subject: string | null
           thread_id: string | null
@@ -328,7 +461,10 @@ export type Database = {
           is_read?: boolean
           occurred_at?: string
           owner_id: string
-          prospect_id: string
+          prospect_id?: string | null
+          recipient_email?: string | null
+          sender_email?: string | null
+          sender_name?: string | null
           source?: string
           subject?: string | null
           thread_id?: string | null
@@ -346,7 +482,10 @@ export type Database = {
           is_read?: boolean
           occurred_at?: string
           owner_id?: string
-          prospect_id?: string
+          prospect_id?: string | null
+          recipient_email?: string | null
+          sender_email?: string | null
+          sender_name?: string | null
           source?: string
           subject?: string | null
           thread_id?: string | null
@@ -364,6 +503,8 @@ export type Database = {
       }
       profiles: {
         Row: {
+          archived_at: string | null
+          archived_by: string | null
           created_at: string
           email: string | null
           full_name: string | null
@@ -372,6 +513,8 @@ export type Database = {
           phone: string | null
         }
         Insert: {
+          archived_at?: string | null
+          archived_by?: string | null
           created_at?: string
           email?: string | null
           full_name?: string | null
@@ -380,6 +523,8 @@ export type Database = {
           phone?: string | null
         }
         Update: {
+          archived_at?: string | null
+          archived_by?: string | null
           created_at?: string
           email?: string | null
           full_name?: string | null
@@ -459,60 +604,226 @@ export type Database = {
           },
         ]
       }
+      prospect_previews: {
+        Row: {
+          expires_at: string
+          generated_at: string
+          generated_by: string | null
+          html_url: string
+          id: string
+          model: string | null
+          opened_at: string | null
+          prospect_id: string
+          sector: string | null
+          slug: string
+          source_data: Json
+          template: string
+          view_count: number
+        }
+        Insert: {
+          expires_at?: string
+          generated_at?: string
+          generated_by?: string | null
+          html_url: string
+          id?: string
+          model?: string | null
+          opened_at?: string | null
+          prospect_id: string
+          sector?: string | null
+          slug: string
+          source_data?: Json
+          template: string
+          view_count?: number
+        }
+        Update: {
+          expires_at?: string
+          generated_at?: string
+          generated_by?: string | null
+          html_url?: string
+          id?: string
+          model?: string | null
+          opened_at?: string | null
+          prospect_id?: string
+          sector?: string | null
+          slug?: string
+          source_data?: Json
+          template?: string
+          view_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prospect_previews_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "prospects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prospect_teasers: {
+        Row: {
+          created_at: string
+          error: string | null
+          generation_id: string | null
+          id: string
+          owner_id: string
+          prompt: string | null
+          prospect_id: string
+          provider: string
+          source_image_url: string | null
+          status: string
+          updated_at: string
+          video_url: string | null
+        }
+        Insert: {
+          created_at?: string
+          error?: string | null
+          generation_id?: string | null
+          id?: string
+          owner_id: string
+          prompt?: string | null
+          prospect_id: string
+          provider?: string
+          source_image_url?: string | null
+          status?: string
+          updated_at?: string
+          video_url?: string | null
+        }
+        Update: {
+          created_at?: string
+          error?: string | null
+          generation_id?: string | null
+          id?: string
+          owner_id?: string
+          prompt?: string | null
+          prospect_id?: string
+          provider?: string
+          source_image_url?: string | null
+          status?: string
+          updated_at?: string
+          video_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prospect_teasers_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "prospects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       prospects: {
         Row: {
+          apollo_id: string | null
+          apollo_synced_at: string | null
+          brief_activity: string | null
+          brief_enriched_at: string | null
+          brief_keywords: string[] | null
+          brief_objective: string | null
+          brief_tone: string | null
           company: string | null
+          company_domain: string | null
+          company_size: string | null
           created_at: string
           email: string | null
           first_name: string
           id: string
+          industry: string | null
           last_name: string
+          linkedin_url: string | null
+          location: string | null
           next_action: string | null
           next_action_at: string | null
           notes: string | null
           owner_id: string
           phone: string | null
+          photo_url: string | null
+          seniority: string | null
+          siret: string | null
           source: string | null
           status: Database["public"]["Enums"]["prospect_status"]
           tags: string[]
+          title: string | null
           updated_at: string
           website: string | null
+          website_checked_at: string | null
+          website_score: number | null
+          website_status: string | null
         }
         Insert: {
+          apollo_id?: string | null
+          apollo_synced_at?: string | null
+          brief_activity?: string | null
+          brief_enriched_at?: string | null
+          brief_keywords?: string[] | null
+          brief_objective?: string | null
+          brief_tone?: string | null
           company?: string | null
+          company_domain?: string | null
+          company_size?: string | null
           created_at?: string
           email?: string | null
           first_name: string
           id?: string
+          industry?: string | null
           last_name: string
+          linkedin_url?: string | null
+          location?: string | null
           next_action?: string | null
           next_action_at?: string | null
           notes?: string | null
           owner_id: string
           phone?: string | null
+          photo_url?: string | null
+          seniority?: string | null
+          siret?: string | null
           source?: string | null
           status?: Database["public"]["Enums"]["prospect_status"]
           tags?: string[]
+          title?: string | null
           updated_at?: string
           website?: string | null
+          website_checked_at?: string | null
+          website_score?: number | null
+          website_status?: string | null
         }
         Update: {
+          apollo_id?: string | null
+          apollo_synced_at?: string | null
+          brief_activity?: string | null
+          brief_enriched_at?: string | null
+          brief_keywords?: string[] | null
+          brief_objective?: string | null
+          brief_tone?: string | null
           company?: string | null
+          company_domain?: string | null
+          company_size?: string | null
           created_at?: string
           email?: string | null
           first_name?: string
           id?: string
+          industry?: string | null
           last_name?: string
+          linkedin_url?: string | null
+          location?: string | null
           next_action?: string | null
           next_action_at?: string | null
           notes?: string | null
           owner_id?: string
           phone?: string | null
+          photo_url?: string | null
+          seniority?: string | null
+          siret?: string | null
           source?: string | null
           status?: Database["public"]["Enums"]["prospect_status"]
           tags?: string[]
+          title?: string | null
           updated_at?: string
           website?: string | null
+          website_checked_at?: string | null
+          website_score?: number | null
+          website_status?: string | null
         }
         Relationships: []
       }
@@ -942,6 +1253,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       app_role: ["admin", "collaborator"],

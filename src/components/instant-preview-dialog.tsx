@@ -130,7 +130,7 @@ export function InstantPreviewDialog({
   };
 
   const generate = useMutation({
-    mutationFn: async (force_refresh = false) => {
+    mutationFn: async (force_refresh: boolean) => {
       startStepProgress();
       const { data, error } = await supabase.functions.invoke("generate-preview", {
         body: { prospect_id: prospectId, force_refresh },
