@@ -180,8 +180,7 @@ export function renderDocumentHtml(doc: RenderDoc, s: RenderSettings): string {
 
     <div class="mentions">
       ${franchise ? `<p><strong>TVA non applicable, art. 293 B du CGI.</strong></p>` : ""}
-      <p>${penalty}</p>
-      <p>${indemnite}</p>
+      ${doc.client_is_pro !== false ? `<p>${penalty}</p><p>${indemnite}</p>` : ""}
       ${s.custom_mentions ? `<p>${esc(s.custom_mentions)}</p>` : ""}
     </div>
   </div>
