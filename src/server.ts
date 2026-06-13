@@ -86,6 +86,52 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
 //                    (ou https://workspace.wyngo.fr/p/<slug> avec custom domain)
 const SUPABASE_PROJECT_ID = "mwkkgubvdswmdaiswepl";
 
+// ─── DEVIS PUBLIC PROXY ────────────────────────────────────────────────
+// Route /devis/<token> : page publique de signature d'un devis.
+// Même problème que les previews (Supabase casse le content-type des edge
+// functions) → on proxie l'edge function `devis-public` et on réémet le
+// HTML / JSON avec les bons headers. GET = rendu page, POST = signature.
+const SUPABASE_ANON_KEY =
+  (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_SUPABASE_PUBLISHABLE_KEY || "";
+
+async function serveDevis(token: string, request: Request): Promise<Response> {
+  const clean = token.replace(/[^a-z0-9\-]/gi, "");
+  if (!clean) return new Response("Lien invalide", { status: 400 });
+
+  const fnUrl = `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/devis-public?token=${clean}`;
+  const isPost = request.method === "POST";
+  const upstream = await fetch(fnUrl, {
+    method: isPost ? "POST" : "GET",
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      "content-type": "application/json",
+    },
+    body: isPost ? await request.text() : undefined,
+  });
+
+  const bodyText = await upstream.text();
+  const ct = upstream.headers.get("content-type") || "";
+  if (ct.includes("application/json")) {
+    return new Response(bodyText, {
+      status: upstream.status,
+      headers: { "content-type": "application/json; charset=utf-8" },
+    });
+  }
+  return new Response(bodyText, {
+    status: upstream.status,
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      "x-robots-tag": "noindex",
+      "content-security-policy":
+        "default-src 'self' https: data:; img-src 'self' https: data: blob:; " +
+        "style-src 'self' https: 'unsafe-inline'; script-src 'self' 'unsafe-inline'; " +
+        "font-src 'self' https: data:; connect-src 'self' https:;",
+    },
+  });
+}
+
 async function servePreview(slug: string): Promise<Response> {
   // Nettoyage défensif : pas de slash, pas de traversée
   const clean = slug.replace(/[^a-z0-9\-]/gi, "");
@@ -128,6 +174,12 @@ export default {
       if (url.pathname.startsWith("/p/")) {
         const slug = url.pathname.slice(3);
         return await servePreview(slug);
+      }
+
+      // Route page publique de signature de devis
+      if (url.pathname.startsWith("/devis/")) {
+        const token = url.pathname.slice("/devis/".length);
+        return await serveDevis(token, request);
       }
 
       const handler = await getServerEntry();

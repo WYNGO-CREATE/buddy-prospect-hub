@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Plus, Trash2, Loader2, Save, Send, UserSearch, FileDown } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Loader2, Save, Send, UserSearch, FileDown, Link2, Copy, CheckCircle2, Eye, ExternalLink, PenLine } from "lucide-react";
 import { parseFrenchAddress } from "@/lib/address";
 import { renderDocumentHtml } from "@/lib/document-html";
 import { toast } from "sonner";
@@ -29,6 +29,19 @@ export const Route = createFileRoute("/_authenticated/facturation/document/$id")
 
 type Line = { description: string; quantity: number; unit_price_ht: number; vat_rate: number };
 const money = (n: number) => (Number(n) || 0).toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
+
+const STATUS_LABEL: Record<string, string> = {
+  brouillon: "Brouillon", envoye: "Envoyé", accepte: "Accepté", refuse: "Refusé",
+  paye: "Payé", en_retard: "En retard", annule: "Annulé",
+};
+const STATUS_BADGE: Record<string, string> = {
+  envoye: "bg-sky-100 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300",
+  accepte: "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300",
+  refuse: "bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300",
+  paye: "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300",
+  en_retard: "bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300",
+  annule: "bg-slate-100 dark:bg-slate-800 text-slate-500",
+};
 
 function DocumentEditor() {
   const { id } = Route.useParams();
@@ -44,6 +57,19 @@ function DocumentEditor() {
   });
   const franchise = settings?.vat_regime !== "normal";
   const defaultVat = Number(settings?.default_vat_rate ?? 20);
+
+  // Facture auto-créée à la signature de ce devis
+  const { data: convertedFacture } = useQuery({
+    queryKey: ["converted-facture", id],
+    enabled: !!doc && doc.type === "devis" && doc.status === "accepte",
+    queryFn: async () => (await supabase.from("documents").select("id, number, status").eq("converted_from", id).maybeSingle()).data,
+  });
+  // Devis d'origine (si ce document est une facture issue d'un devis)
+  const { data: sourceDevis } = useQuery({
+    queryKey: ["source-devis", doc?.converted_from],
+    enabled: !!doc?.converted_from,
+    queryFn: async () => (await supabase.from("documents").select("id, number, signed_by_name").eq("id", doc!.converted_from!).maybeSingle()).data,
+  });
 
   // État local
   const [client, setClient] = useState({ name: "", address: "", postal_code: "", city: "", siret: "", email: "" });
@@ -152,7 +178,7 @@ function DocumentEditor() {
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" asChild className="gap-1"><Link to="/facturation"><ArrowLeft className="h-4 w-4" /> Facturation</Link></Button>
           <h1 className="text-xl font-bold">{isFacture ? "Facture" : "Devis"} {doc.number ? `· ${doc.number}` : <span className="text-muted-foreground font-normal">(brouillon)</span>}</h1>
-          {emitted && <Badge className="border-0 bg-sky-100 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300">{doc.status}</Badge>}
+          {emitted && <Badge className={cn("border-0", STATUS_BADGE[doc.status] || STATUS_BADGE.envoye)}>{STATUS_LABEL[doc.status] || doc.status}</Badge>}
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" className="gap-1.5" onClick={openPdf}>
@@ -168,6 +194,17 @@ function DocumentEditor() {
           )}
         </div>
       </div>
+
+      {/* Facture issue d'un devis signé */}
+      {isFacture && doc.converted_from && (
+        <div className="rounded-lg border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/60 dark:bg-emerald-950/20 px-4 py-2.5 text-sm flex items-center gap-2">
+          <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+          <span>Générée automatiquement depuis le devis {sourceDevis?.number ? <b>{sourceDevis.number}</b> : "signé"}{sourceDevis?.signed_by_name ? <> · signé par <b>{sourceDevis.signed_by_name}</b></> : ""}.</span>
+        </div>
+      )}
+
+      {/* Signature en ligne (devis uniquement) */}
+      {doc.type === "devis" && <SignatureCard doc={doc} facture={convertedFacture} />}
 
       {/* Client */}
       <Card>
@@ -235,13 +272,81 @@ function DocumentEditor() {
         </CardContent>
       </Card>
 
-      <p className="text-xs text-center text-muted-foreground pb-4">🔜 Prochaine étape : descriptions générées par l'IA, vérification de conformité, et PDF.</p>
     </div>
   );
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <div className="space-y-1.5"><Label className="text-xs">{label}</Label>{children}</div>;
+}
+
+// ── Signature en ligne d'un devis (lien public + suivi + orchestration) ──
+type SignDoc = {
+  type: string; status: string; number: string | null; share_token: string;
+  viewed_at: string | null; accepted_at: string | null; refused_at: string | null; signed_by_name: string | null;
+};
+function SignatureCard({ doc, facture }: { doc: SignDoc; facture?: { id: string; number: string | null; status: string } | null }) {
+  const navigate = Route.useNavigate();
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const shareUrl = `${origin}/devis/${doc.share_token}`;
+  const emitted = doc.status !== "brouillon";
+  const d = (s: string | null) => (s ? new Date(s).toLocaleDateString("fr-FR", { day: "2-digit", month: "long" }) : "");
+
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(shareUrl); toast.success("Lien copié"); }
+    catch { toast.error("Copie impossible — sélectionne le lien manuellement."); }
+  };
+
+  return (
+    <Card className="border-indigo-200 dark:border-indigo-900/50 bg-gradient-to-br from-indigo-50/50 to-transparent dark:from-indigo-950/20">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2"><PenLine className="h-4 w-4 text-indigo-600" /> Signature en ligne</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {!emitted ? (
+          <p className="text-sm text-muted-foreground">
+            Émets le devis (bouton <b>Émettre</b>) pour générer le lien de signature à envoyer au client.
+          </p>
+        ) : (
+          <>
+            <div className="flex gap-2">
+              <Input readOnly value={shareUrl} onFocus={(e) => e.currentTarget.select()} className="h-9 text-xs font-mono" />
+              <Button variant="outline" size="sm" className="h-9 gap-1.5 shrink-0" onClick={copy}><Copy className="h-3.5 w-3.5" /> Copier</Button>
+              <Button variant="outline" size="sm" className="h-9 gap-1.5 shrink-0" asChild>
+                <a href={shareUrl} target="_blank" rel="noreferrer"><ExternalLink className="h-3.5 w-3.5" /> Ouvrir</a>
+              </Button>
+            </div>
+
+            {/* Statut de signature */}
+            {doc.status === "accepte" ? (
+              <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 p-3 space-y-2">
+                <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                  <CheckCircle2 className="h-4 w-4" /> Accepté{doc.signed_by_name ? ` par ${doc.signed_by_name}` : ""}{doc.accepted_at ? ` le ${d(doc.accepted_at)}` : ""}
+                </p>
+                {facture && (
+                  <button
+                    onClick={() => navigate({ to: "/facturation/document/$id", params: { id: facture.id } })}
+                    className="text-xs text-emerald-700 dark:text-emerald-400 hover:underline flex items-center gap-1">
+                    <ExternalLink className="h-3 w-3" /> Voir la facture créée automatiquement{facture.number ? ` · ${facture.number}` : " (brouillon)"}
+                  </button>
+                )}
+              </div>
+            ) : doc.status === "refuse" ? (
+              <p className="text-sm text-rose-700 dark:text-rose-400">Devis décliné par le client{doc.refused_at ? ` le ${d(doc.refused_at)}` : ""}.</p>
+            ) : doc.viewed_at ? (
+              <p className="text-sm text-sky-700 dark:text-sky-400 flex items-center gap-1.5"><Eye className="h-4 w-4" /> Vu par le client le {d(doc.viewed_at)} — en attente de signature.</p>
+            ) : (
+              <p className="text-sm text-muted-foreground flex items-center gap-1.5"><Link2 className="h-4 w-4" /> Envoie ce lien au client. Tu seras prévenu quand il l'ouvre et le signe.</p>
+            )}
+
+            <p className="text-[11px] text-muted-foreground border-t pt-2.5">
+              ⚡ Dès la signature : la <b>facture</b> est créée automatiquement et le prospect passe en <b>production (Studio)</b>. Tout s'enchaîne.
+            </p>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 // Importer les coordonnées d'un prospect du CRM

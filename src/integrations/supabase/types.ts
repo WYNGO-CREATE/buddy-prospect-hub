@@ -370,6 +370,7 @@ export type Database = {
       }
       documents: {
         Row: {
+          accepted_at: string | null
           client_address: string | null
           client_city: string | null
           client_delivery_address: string | null
@@ -388,17 +389,26 @@ export type Database = {
           number: string | null
           owner_id: string
           paid_at: string | null
+          payment_enabled: boolean
+          payment_provider_id: string | null
+          payment_url: string | null
           prospect_id: string | null
+          refused_at: string | null
           sent_at: string | null
           service_date_text: string | null
+          share_token: string
+          signed_by_name: string | null
+          signer_ip: string | null
           status: string
           total_ht: number
           total_ttc: number
           total_vat: number
           type: string
           updated_at: string
+          viewed_at: string | null
         }
         Insert: {
+          accepted_at?: string | null
           client_address?: string | null
           client_city?: string | null
           client_delivery_address?: string | null
@@ -417,17 +427,26 @@ export type Database = {
           number?: string | null
           owner_id: string
           paid_at?: string | null
+          payment_enabled?: boolean
+          payment_provider_id?: string | null
+          payment_url?: string | null
           prospect_id?: string | null
+          refused_at?: string | null
           sent_at?: string | null
           service_date_text?: string | null
+          share_token?: string
+          signed_by_name?: string | null
+          signer_ip?: string | null
           status?: string
           total_ht?: number
           total_ttc?: number
           total_vat?: number
           type: string
           updated_at?: string
+          viewed_at?: string | null
         }
         Update: {
+          accepted_at?: string | null
           client_address?: string | null
           client_city?: string | null
           client_delivery_address?: string | null
@@ -446,15 +465,23 @@ export type Database = {
           number?: string | null
           owner_id?: string
           paid_at?: string | null
+          payment_enabled?: boolean
+          payment_provider_id?: string | null
+          payment_url?: string | null
           prospect_id?: string | null
+          refused_at?: string | null
           sent_at?: string | null
           service_date_text?: string | null
+          share_token?: string
+          signed_by_name?: string | null
+          signer_ip?: string | null
           status?: string
           total_ht?: number
           total_ttc?: number
           total_vat?: number
           type?: string
           updated_at?: string
+          viewed_at?: string | null
         }
         Relationships: [
           {
