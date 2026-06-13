@@ -139,6 +139,7 @@ export type Database = {
           email: string | null
           iban: string | null
           id: boolean
+          is_ei: boolean
           late_penalty: string | null
           legal_form: string | null
           legal_name: string | null
@@ -146,6 +147,7 @@ export type Database = {
           payment_terms_days: number
           phone: string | null
           postal_code: string | null
+          rne_registered: boolean
           siret: string | null
           updated_at: string
           vat_number: string | null
@@ -160,6 +162,7 @@ export type Database = {
           email?: string | null
           iban?: string | null
           id?: boolean
+          is_ei?: boolean
           late_penalty?: string | null
           legal_form?: string | null
           legal_name?: string | null
@@ -167,6 +170,7 @@ export type Database = {
           payment_terms_days?: number
           phone?: string | null
           postal_code?: string | null
+          rne_registered?: boolean
           siret?: string | null
           updated_at?: string
           vat_number?: string | null
@@ -181,6 +185,7 @@ export type Database = {
           email?: string | null
           iban?: string | null
           id?: boolean
+          is_ei?: boolean
           late_penalty?: string | null
           legal_form?: string | null
           legal_name?: string | null
@@ -188,6 +193,7 @@ export type Database = {
           payment_terms_days?: number
           phone?: string | null
           postal_code?: string | null
+          rne_registered?: boolean
           siret?: string | null
           updated_at?: string
           vat_number?: string | null
@@ -363,7 +369,9 @@ export type Database = {
         Row: {
           client_address: string | null
           client_city: string | null
+          client_delivery_address: string | null
           client_email: string | null
+          client_is_pro: boolean
           client_name: string | null
           client_postal_code: string | null
           client_siret: string | null
@@ -379,6 +387,7 @@ export type Database = {
           paid_at: string | null
           prospect_id: string | null
           sent_at: string | null
+          service_date_text: string | null
           status: string
           total_ht: number
           total_ttc: number
@@ -389,7 +398,9 @@ export type Database = {
         Insert: {
           client_address?: string | null
           client_city?: string | null
+          client_delivery_address?: string | null
           client_email?: string | null
+          client_is_pro?: boolean
           client_name?: string | null
           client_postal_code?: string | null
           client_siret?: string | null
@@ -405,6 +416,7 @@ export type Database = {
           paid_at?: string | null
           prospect_id?: string | null
           sent_at?: string | null
+          service_date_text?: string | null
           status?: string
           total_ht?: number
           total_ttc?: number
@@ -415,7 +427,9 @@ export type Database = {
         Update: {
           client_address?: string | null
           client_city?: string | null
+          client_delivery_address?: string | null
           client_email?: string | null
+          client_is_pro?: boolean
           client_name?: string | null
           client_postal_code?: string | null
           client_siret?: string | null
@@ -431,6 +445,7 @@ export type Database = {
           paid_at?: string | null
           prospect_id?: string | null
           sent_at?: string | null
+          service_date_text?: string | null
           status?: string
           total_ht?: number
           total_ttc?: number

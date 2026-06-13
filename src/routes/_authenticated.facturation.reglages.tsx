@@ -27,14 +27,14 @@ type Settings = {
   legal_name: string; legal_form: string; address: string; postal_code: string; city: string;
   siret: string; vat_number: string; vat_regime: "franchise" | "normal"; default_vat_rate: number;
   iban: string; bic: string; payment_terms_days: number; late_penalty: string; custom_mentions: string;
-  email: string; phone: string;
+  email: string; phone: string; is_ei: boolean; rne_registered: boolean;
 };
 
 const EMPTY: Settings = {
   legal_name: "", legal_form: "", address: "", postal_code: "", city: "", siret: "", vat_number: "",
   vat_regime: "franchise", default_vat_rate: 20, iban: "", bic: "", payment_terms_days: 30,
-  late_penalty: "En cas de retard de paiement, application de pénalités au taux de 3 fois le taux d'intérêt légal, plus une indemnité forfaitaire de 40 € pour frais de recouvrement (art. L441-10 et D441-5 du Code de commerce).",
-  custom_mentions: "", email: "", phone: "",
+  late_penalty: "Pénalités de retard : 3 fois le taux d'intérêt légal en cas de retard de paiement.",
+  custom_mentions: "", email: "", phone: "", is_ei: true, rne_registered: true,
 };
 
 function ReglagesPage() {
@@ -90,8 +90,18 @@ function ReglagesPage() {
             <Field label="Ville"><Input value={s.city} onChange={(e) => set("city", e.target.value)} /></Field>
           </div>
           <div className="grid sm:grid-cols-2 gap-3">
-            <Field label="SIRET *"><Input value={s.siret} onChange={(e) => set("siret", e.target.value)} placeholder="123 456 789 00012" /></Field>
+            <Field label="SIRET * (14 chiffres)"><Input value={s.siret} onChange={(e) => set("siret", e.target.value)} placeholder="123 456 789 00012" /></Field>
             <Field label="Email"><Input value={s.email} onChange={(e) => set("email", e.target.value)} /></Field>
+          </div>
+          <div className="space-y-2 pt-1">
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" checked={s.is_ei} onChange={(e) => set("is_ei", e.target.checked)} />
+              Entreprise Individuelle — ajoute la mention <b>« EI »</b> à ton nom (obligatoire)
+            </label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" checked={s.rne_registered} onChange={(e) => set("rne_registered", e.target.checked)} />
+              Afficher <b>« Immatriculé au RNE »</b> (obligatoire micro-entreprise)
+            </label>
           </div>
         </CardContent>
       </Card>

@@ -16,8 +16,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Plus, Trash2, Loader2, Save, Send, UserSearch } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Loader2, Save, Send, UserSearch, FileDown } from "lucide-react";
 import { parseFrenchAddress } from "@/lib/address";
+import { renderDocumentHtml } from "@/lib/document-html";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -49,6 +50,9 @@ function DocumentEditor() {
   const [lines, setLines] = useState<Line[]>([]);
   const [notes, setNotes] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [serviceDate, setServiceDate] = useState("");
+  const [delivery, setDelivery] = useState("");
+  const [isPro, setIsPro] = useState(true);
 
   useEffect(() => {
     if (!doc) return;
@@ -59,6 +63,9 @@ function DocumentEditor() {
     setLines(Array.isArray(doc.lines) ? (doc.lines as Line[]) : []);
     setNotes(doc.notes || "");
     setDueDate(doc.due_date || "");
+    setServiceDate((doc as { service_date_text?: string | null }).service_date_text || "");
+    setDelivery((doc as { client_delivery_address?: string | null }).client_delivery_address || "");
+    setIsPro((doc as { client_is_pro?: boolean }).client_is_pro ?? true);
   }, [doc]);
 
   const totals = useMemo(() => {
@@ -80,6 +87,7 @@ function DocumentEditor() {
       const { error } = await supabase.from("documents").update({
         client_name: client.name || null, client_address: client.address || null, client_postal_code: client.postal_code || null,
         client_city: client.city || null, client_siret: client.siret || null, client_email: client.email || null,
+        client_is_pro: isPro, client_delivery_address: delivery || null, service_date_text: serviceDate || null,
         lines: lines as never, total_ht: totals.ht, total_vat: totals.vat, total_ttc: totals.ttc,
         notes: notes || null, due_date: dueDate || null, updated_at: new Date().toISOString(),
       }).eq("id", id);
@@ -106,6 +114,7 @@ function DocumentEditor() {
         number, status: "envoye", issue_date: today, due_date: due, sent_at: new Date().toISOString(),
         client_name: client.name, client_address: client.address || null, client_postal_code: client.postal_code || null,
         client_city: client.city || null, client_siret: client.siret || null, client_email: client.email || null,
+        client_is_pro: isPro, client_delivery_address: delivery || null, service_date_text: serviceDate || null,
         lines: lines as never, total_ht: totals.ht, total_vat: totals.vat, total_ttc: totals.ttc, notes: notes || null,
         updated_at: new Date().toISOString(),
       }).eq("id", id);
@@ -115,6 +124,23 @@ function DocumentEditor() {
     onSuccess: (number) => { qc.invalidateQueries({ queryKey: ["document", id] }); qc.invalidateQueries({ queryKey: ["documents"] }); toast.success(`Émis — ${number}`); },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  const openPdf = () => {
+    if (!doc) return;
+    const html = renderDocumentHtml(
+      {
+        type: doc.type as "devis" | "facture", number: doc.number, issue_date: doc.issue_date || new Date().toISOString().slice(0, 10),
+        due_date: dueDate || null, service_date_text: serviceDate || null,
+        client_name: client.name, client_address: client.address, client_postal_code: client.postal_code, client_city: client.city,
+        client_siret: client.siret, client_email: client.email, client_delivery_address: delivery, client_is_pro: isPro,
+        lines, notes,
+      },
+      (settings || {}) as Parameters<typeof renderDocumentHtml>[1],
+    );
+    const w = window.open("", "_blank");
+    if (w) { w.document.write(html); w.document.close(); }
+    else { const b = new Blob([html], { type: "text/html" }); window.open(URL.createObjectURL(b), "_blank"); }
+  };
 
   if (isLoading || !doc) return <div className="p-6 text-muted-foreground">{isLoading ? "Chargement…" : "Document introuvable."}</div>;
   const isFacture = doc.type === "facture";
@@ -129,6 +155,9 @@ function DocumentEditor() {
           {emitted && <Badge className="border-0 bg-sky-100 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300">{doc.status}</Badge>}
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={openPdf}>
+            <FileDown className="h-3.5 w-3.5" /> Aperçu / PDF
+          </Button>
           <Button variant="outline" size="sm" className="gap-1.5" disabled={save.isPending} onClick={() => save.mutate()}>
             {save.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Enregistrer
           </Button>
@@ -151,12 +180,17 @@ function DocumentEditor() {
             <Field label="Nom / société *"><Input value={client.name} onChange={(e) => setClient({ ...client, name: e.target.value })} /></Field>
             <Field label="Email"><Input value={client.email} onChange={(e) => setClient({ ...client, email: e.target.value })} /></Field>
           </div>
-          <Field label="Adresse"><Input value={client.address} onChange={(e) => setClient({ ...client, address: e.target.value })} /></Field>
-          <div className="grid grid-cols-[110px_1fr_180px] gap-3">
+          <Field label="Adresse de facturation"><Input value={client.address} onChange={(e) => setClient({ ...client, address: e.target.value })} /></Field>
+          <div className="grid grid-cols-[110px_1fr_200px] gap-3">
             <Field label="Code postal"><Input value={client.postal_code} onChange={(e) => setClient({ ...client, postal_code: e.target.value })} /></Field>
             <Field label="Ville"><Input value={client.city} onChange={(e) => setClient({ ...client, city: e.target.value })} /></Field>
-            <Field label="SIRET"><Input value={client.siret} onChange={(e) => setClient({ ...client, siret: e.target.value })} /></Field>
+            <Field label="SIREN / SIRET (client pro)"><Input value={client.siret} onChange={(e) => setClient({ ...client, siret: e.target.value })} placeholder="9 ou 14 chiffres" /></Field>
           </div>
+          <Field label="Adresse de livraison (si différente)"><Input value={delivery} onChange={(e) => setDelivery(e.target.value)} placeholder="Optionnel" /></Field>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+            <input type="checkbox" checked={isPro} onChange={(e) => setIsPro(e.target.checked)} />
+            Client professionnel (B2B) — affiche le SIREN + mentions de paiement obligatoires
+          </label>
         </CardContent>
       </Card>
 
@@ -195,6 +229,7 @@ function DocumentEditor() {
         <CardContent className="p-4 space-y-3">
           <div className="grid sm:grid-cols-2 gap-3">
             <Field label={isFacture ? "Échéance de paiement" : "Validité du devis"}><Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></Field>
+            <Field label="Date / période de prestation *"><Input value={serviceDate} onChange={(e) => setServiceDate(e.target.value)} placeholder="Livraison le 15/06/2026 · ou Période du 01/06 au 30/06" /></Field>
           </div>
           <Field label="Note / conditions"><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Acompte de 30% à la commande…" /></Field>
         </CardContent>
