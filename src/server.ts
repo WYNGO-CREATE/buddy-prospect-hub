@@ -91,8 +91,11 @@ const SUPABASE_PROJECT_ID = "mwkkgubvdswmdaiswepl";
 // Même problème que les previews (Supabase casse le content-type des edge
 // functions) → on proxie l'edge function `devis-public` et on réémet le
 // HTML / JSON avec les bons headers. GET = rendu page, POST = signature.
+// Clé anon (publishable) — publique par nature (déjà embarquée dans le bundle
+// client). En dur ici pour fiabiliser le proxy worker (pas de dépendance au
+// remplacement build-time de import.meta.env côté Worker).
 const SUPABASE_ANON_KEY =
-  (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_SUPABASE_PUBLISHABLE_KEY || "";
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im13a2tndWJ2ZHN3bWRhaXN3ZXBsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzODU1MjksImV4cCI6MjA5NDk2MTUyOX0.voOfEzx1Cy4ERDpH_T1EBmjeCHBqREgOUZFuLp4Or-A";
 
 async function serveDevis(token: string, request: Request): Promise<Response> {
   const clean = token.replace(/[^a-z0-9\-]/gi, "");
