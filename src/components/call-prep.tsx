@@ -41,7 +41,6 @@ export function CallPrep({ prospectId }: { prospectId: string }) {
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
           <Headset className="h-4 w-4 text-primary" /> Préparer l'appel
-          <span className="text-[10px] font-normal text-muted-foreground">· IA</span>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">

@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { ArrowLeft, PhoneCall, CalendarClock, History, Check, MessageSquare, Trash2, UserCog, Headphones, Globe, ExternalLink, Phone, Sparkles, Wand2 } from "lucide-react";
+import { ArrowLeft, PhoneCall, CalendarClock, History, Check, MessageSquare, Trash2, UserCog, Headphones, Globe, ExternalLink, Sparkles, Wand2 } from "lucide-react";
 // CallModeDrawer déplacé : Mode appel centralisé sur /scripts (CallLauncherForProspect)
 // PitchGeneratorDialog déplacé vers la page "Génération d'emails" (centralisé)
 import { InstantPreviewDialog } from "@/components/instant-preview-dialog";
@@ -23,6 +23,7 @@ import { CallDebrief } from "@/components/call-debrief";
 import { CallPrep } from "@/components/call-prep";
 import { PostcardSender } from "@/components/postcard-sender";
 import { ProspectEnrichButton } from "@/components/prospect-enrich-button";
+import { ProspectPhoneCard } from "@/components/prospect-phone-card";
 import { findTradeByNaf } from "@/lib/trades-catalog";
 import { Briefcase } from "lucide-react";
 import { PROSPECT_STATUSES, STATUS_LABELS, STATUS_VARIANTS, EVENT_LABELS, type ProspectStatus } from "@/lib/crm";
@@ -356,24 +357,8 @@ function ProspectDetail() {
       <Card>
         <CardContent className="pt-6">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {/* Téléphone */}
-            <a
-              href={prospect.phone ? `tel:${prospect.phone}` : undefined}
-              className={cn(
-                "flex items-center gap-3 p-3 rounded-lg border transition",
-                prospect.phone
-                  ? "hover:bg-accent/50 cursor-pointer"
-                  : "opacity-50 cursor-not-allowed",
-              )}
-            >
-              <div className="size-10 rounded-full bg-emerald-100 dark:bg-emerald-950/40 flex items-center justify-center flex-shrink-0">
-                <Phone className="h-5 w-5 text-emerald-700 dark:text-emerald-300" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Téléphone</p>
-                <p className="font-semibold truncate">{prospect.phone || "Non renseigné"}</p>
-              </div>
-            </a>
+            {/* Téléphone — éditable (corriger un 0 manquant, etc.) */}
+            <ProspectPhoneCard prospectId={prospect.id} phone={prospect.phone} />
 
             {/* Email — carte autonome : cliquable (mailto) seulement si
                 l'email est sûr. Si "à tester"/invalide → pas de redirection. */}

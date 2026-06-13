@@ -102,7 +102,6 @@ export function PostcardSender({
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
           <Mailbox className="h-4 w-4 text-rose-600" /> Carte postale physique
-          <span className="text-[10px] font-normal text-muted-foreground">· La Poste</span>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
