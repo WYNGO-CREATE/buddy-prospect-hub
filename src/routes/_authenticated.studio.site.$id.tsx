@@ -12,12 +12,13 @@
 
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Sparkles, Wand2, Loader2, Rocket, Monitor, Smartphone, Undo2, Maximize2 } from "lucide-react";
+import { ArrowLeft, Sparkles, Wand2, Loader2, Rocket, Monitor, Smartphone, Undo2, Maximize2, Image as ImageIcon } from "lucide-react";
+import { SitePhotosPanel } from "@/components/site-photos-panel";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -45,7 +46,16 @@ function SiteEditor() {
   const [prevHtml, setPrevHtml] = useState<string | null>(null); // undo 1 étape
   const [instruction, setInstruction] = useState("");
   const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
+  const [panel, setPanel] = useState<"ia" | "photos">("ia");
   const initedFor = useRef<string | null>(null); // init unique par site (évite l'écrasement)
+
+  // Persiste un nouveau HTML (utilisé par l'édition de photos) + active l'undo.
+  const persist = useCallback(async (newHtml: string) => {
+    setPrevHtml(html);
+    setHtml(newHtml);
+    const { error } = await supabase.from("client_sites").update({ html: newHtml, updated_at: new Date().toISOString() }).eq("id", id);
+    if (error) throw error;
+  }, [html, id]);
 
   const { data: site, isLoading } = useQuery({
     queryKey: ["studio-site", id],
@@ -145,8 +155,20 @@ function SiteEditor() {
       </div>
 
       <div className="flex-1 flex min-h-0">
-        {/* Panneau IA */}
+        {/* Panneau gauche : onglets IA / Photos */}
         <div className="w-80 border-r bg-card flex flex-col">
+          <div className="grid grid-cols-2 gap-1 p-2 border-b">
+            <button onClick={() => setPanel("ia")} className={cn("flex items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-semibold transition", panel === "ia" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted")}>
+              <Sparkles className="h-3.5 w-3.5" /> Modifier (IA)
+            </button>
+            <button onClick={() => setPanel("photos")} className={cn("flex items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-semibold transition", panel === "photos" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted")}>
+              <ImageIcon className="h-3.5 w-3.5" /> Photos & logo
+            </button>
+          </div>
+
+          {panel === "photos" ? (
+            <SitePhotosPanel html={html} siteId={id} onChange={persist} />
+          ) : (
           <div className="p-4 space-y-3 overflow-y-auto">
             <div>
               <p className="text-sm font-semibold flex items-center gap-1.5"><Sparkles className="h-4 w-4 text-primary" /> Modifier avec l'IA</p>
@@ -177,6 +199,7 @@ function SiteEditor() {
               </div>
             </div>
           </div>
+          )}
         </div>
 
         {/* Aperçu live */}
