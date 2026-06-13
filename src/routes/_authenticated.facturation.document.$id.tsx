@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Plus, Trash2, Loader2, Save, Send, UserSearch, FileDown, Link2, Copy, CheckCircle2, Eye, ExternalLink, PenLine } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Loader2, Save, Send, UserSearch, FileDown, Link2, Copy, CheckCircle2, Eye, ExternalLink, PenLine, CreditCard } from "lucide-react";
 import { parseFrenchAddress } from "@/lib/address";
 import { renderDocumentHtml } from "@/lib/document-html";
 import { toast } from "sonner";
@@ -272,6 +272,9 @@ function DocumentEditor() {
         </CardContent>
       </Card>
 
+      {/* Paiement en ligne (factures uniquement) */}
+      {isFacture && <PaymentCard doc={doc} />}
+
     </div>
   );
 }
@@ -342,6 +345,77 @@ function SignatureCard({ doc, facture }: { doc: SignDoc; facture?: { id: string;
             <p className="text-[11px] text-muted-foreground border-t pt-2.5">
               ⚡ Dès la signature : la <b>facture</b> est créée automatiquement et le prospect passe en <b>production (Studio)</b>. Tout s'enchaîne.
             </p>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Paiement en ligne d'une facture (Stripe) ────────────────────────────
+type PayDoc = { id: string; status: string; payment_url: string | null; total_ttc: number };
+function PaymentCard({ doc }: { doc: PayDoc }) {
+  const qc = useQueryClient();
+  const emitted = doc.status !== "brouillon";
+  const paid = doc.status === "paye";
+
+  const { data: stripe } = useQuery({
+    queryKey: ["stripe-status"],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { data } = await supabase.functions.invoke("stripe-payment-link", { body: { action: "status" } });
+      return data as { configured?: boolean } | null;
+    },
+  });
+  const configured = !!stripe?.configured;
+
+  const gen = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke("stripe-payment-link", { body: { document_id: doc.id } });
+      if (error) throw error;
+      const res = data as { ok?: boolean; url?: string; error?: string };
+      if (res?.error) throw new Error(res.error === "stripe_not_configured" ? "Stripe n'est pas connecté." : res.error);
+      return res.url as string;
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["document", doc.id] }); toast.success("Lien de paiement créé"); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(doc.payment_url!); toast.success("Lien copié"); }
+    catch { toast.error("Copie impossible — sélectionne le lien manuellement."); }
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><CreditCard className="h-4 w-4 text-violet-600" /> Paiement en ligne</CardTitle></CardHeader>
+      <CardContent className="space-y-3">
+        {paid ? (
+          <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4" /> Facture payée.</p>
+        ) : !emitted ? (
+          <p className="text-sm text-muted-foreground">Émets la facture pour activer le paiement en ligne.</p>
+        ) : !configured ? (
+          <p className="text-sm text-muted-foreground">
+            Connecte <b>Stripe</b> pour permettre à tes clients de régler par carte en 1 clic. La facture se marque <b>payée</b> automatiquement.
+            <br /><span className="text-[11px]">→ Donne-moi tes clés Stripe pour activer (configuration en cours).</span>
+          </p>
+        ) : doc.payment_url ? (
+          <>
+            <div className="flex gap-2">
+              <Input readOnly value={doc.payment_url} onFocus={(e) => e.currentTarget.select()} className="h-9 text-xs font-mono" />
+              <Button variant="outline" size="sm" className="h-9 gap-1.5 shrink-0" onClick={copy}><Copy className="h-3.5 w-3.5" /> Copier</Button>
+              <Button variant="outline" size="sm" className="h-9 gap-1.5 shrink-0" asChild>
+                <a href={doc.payment_url} target="_blank" rel="noreferrer"><ExternalLink className="h-3.5 w-3.5" /> Ouvrir</a>
+              </Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">Envoie ce lien au client. Dès le paiement, la facture passe en <b>Payé</b> automatiquement.</p>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-muted-foreground">Génère un lien de paiement par carte pour cette facture.</p>
+            <Button size="sm" className="gap-1.5" disabled={gen.isPending} onClick={() => gen.mutate()}>
+              {gen.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CreditCard className="h-3.5 w-3.5" />} Créer un lien de paiement
+            </Button>
           </>
         )}
       </CardContent>
