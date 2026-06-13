@@ -81,7 +81,15 @@ function ReglagesPage() {
         <CardHeader className="pb-3"><CardTitle className="text-base">Ton identité (vendeur)</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           <div className="grid sm:grid-cols-2 gap-3">
-            <Field label="Raison sociale *"><Input value={s.legal_name} onChange={(e) => set("legal_name", e.target.value)} placeholder="Wyngo / Jean Dupont EI" /></Field>
+            <div className="space-y-1.5">
+              <Label className="text-xs">{s.is_ei ? "Ton Prénom + Nom *" : "Raison sociale *"}</Label>
+              <Input value={s.legal_name} onChange={(e) => set("legal_name", e.target.value)} placeholder={s.is_ei ? "Hugo Malet" : "Wyngo SARL"} />
+              <p className="text-[11px] text-muted-foreground">
+                {s.is_ei
+                  ? "Micro-entreprise / EI : ton prénom + nom (déclarés à l'URSSAF). La mention « EI » est ajoutée automatiquement."
+                  : "Le nom officiel de ta société."}
+              </p>
+            </div>
             <Field label="Forme juridique"><Input value={s.legal_form} onChange={(e) => set("legal_form", e.target.value)} placeholder="Micro-entreprise, SARL, SAS…" /></Field>
           </div>
           <Field label="Adresse"><Input value={s.address} onChange={(e) => set("address", e.target.value)} placeholder="12 rue des Lilas" /></Field>
