@@ -27,11 +27,11 @@ type Settings = {
   legal_name: string; legal_form: string; address: string; postal_code: string; city: string;
   siret: string; vat_number: string; vat_regime: "franchise" | "normal"; default_vat_rate: number;
   iban: string; bic: string; payment_terms_days: number; late_penalty: string; custom_mentions: string;
-  email: string; phone: string; is_ei: boolean; rne_registered: boolean;
+  email: string; phone: string; is_ei: boolean; rne_registered: boolean; trade_name: string;
 };
 
 const EMPTY: Settings = {
-  legal_name: "", legal_form: "", address: "", postal_code: "", city: "", siret: "", vat_number: "",
+  legal_name: "", trade_name: "", legal_form: "", address: "", postal_code: "", city: "", siret: "", vat_number: "",
   vat_regime: "franchise", default_vat_rate: 20, iban: "", bic: "", payment_terms_days: 30,
   late_penalty: "En cas de retard de paiement, des pénalités de retard sont applicables au taux de 3 fois le taux d'intérêt légal en vigueur, exigibles le jour suivant la date d'échéance, sans qu'un rappel soit nécessaire.",
   custom_mentions: "", email: "", phone: "", is_ei: true, rne_registered: true,
@@ -91,6 +91,11 @@ function ReglagesPage() {
               </p>
             </div>
             <Field label="Forme juridique"><Input value={s.legal_form} onChange={(e) => set("legal_form", e.target.value)} placeholder="Micro-entreprise, SARL, SAS…" /></Field>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Nom commercial (optionnel)</Label>
+            <Input value={s.trade_name} onChange={(e) => set("trade_name", e.target.value)} placeholder="Ex : Wyngo" />
+            <p className="text-[11px] text-muted-foreground">Ta marque, affichée en avant sur les documents. Ton identité légale reste indiquée pour la conformité.</p>
           </div>
           <Field label="Adresse"><Input value={s.address} onChange={(e) => set("address", e.target.value)} placeholder="12 rue des Lilas" /></Field>
           <div className="grid grid-cols-[120px_1fr] gap-3">

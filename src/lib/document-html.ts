@@ -28,7 +28,7 @@ export type RenderDoc = {
 };
 
 export type RenderSettings = {
-  legal_name?: string | null; is_ei?: boolean | null; legal_form?: string | null;
+  legal_name?: string | null; trade_name?: string | null; is_ei?: boolean | null; legal_form?: string | null;
   address?: string | null; postal_code?: string | null; city?: string | null;
   siret?: string | null; rne_registered?: boolean | null; vat_number?: string | null;
   vat_regime?: string | null; iban?: string | null; bic?: string | null;
@@ -121,7 +121,7 @@ export function renderDocumentHtml(doc: RenderDoc, s: RenderSettings): string {
   <div class="page">
     <div class="top">
       <div class="seller">
-        <div class="name">${sellerName}</div>
+        ${s.trade_name ? `<div class="name">${esc(s.trade_name)}</div><div style="font-weight:600;">${sellerName}</div>` : `<div class="name">${sellerName}</div>`}
         ${s.address ? `<div>${esc(s.address)}</div>` : ""}
         ${(s.postal_code || s.city) ? `<div>${esc(s.postal_code)} ${esc(s.city)}</div>` : ""}
         ${s.siret ? `<div>SIRET : ${esc(s.siret)}</div>` : ""}

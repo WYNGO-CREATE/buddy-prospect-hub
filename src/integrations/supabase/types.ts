@@ -149,6 +149,7 @@ export type Database = {
           postal_code: string | null
           rne_registered: boolean
           siret: string | null
+          trade_name: string | null
           updated_at: string
           vat_number: string | null
           vat_regime: string
@@ -172,6 +173,7 @@ export type Database = {
           postal_code?: string | null
           rne_registered?: boolean
           siret?: string | null
+          trade_name?: string | null
           updated_at?: string
           vat_number?: string | null
           vat_regime?: string
@@ -195,6 +197,7 @@ export type Database = {
           postal_code?: string | null
           rne_registered?: boolean
           siret?: string | null
+          trade_name?: string | null
           updated_at?: string
           vat_number?: string | null
           vat_regime?: string
