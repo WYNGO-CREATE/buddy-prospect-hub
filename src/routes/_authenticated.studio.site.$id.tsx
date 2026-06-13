@@ -47,6 +47,7 @@ function SiteEditor() {
   const [instruction, setInstruction] = useState("");
   const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
   const [panel, setPanel] = useState<"ia" | "photos">("ia");
+  const [history, setHistory] = useState<{ instruction: string; summary: string }[]>([]);
   const initedFor = useRef<string | null>(null); // init unique par site (évite l'écrasement)
 
   // Persiste un nouveau HTML (utilisé par l'édition de photos) + active l'undo.
@@ -98,12 +99,12 @@ function SiteEditor() {
       if (!data?.ok) throw new Error(data?.error || "Modification impossible");
       return data as { html: string; applied: number; skipped: number; summary: string };
     },
-    onMutate: () => { setPrevHtml(html); }, // mémorise pour l'undo
-    onSuccess: (d) => {
+    onMutate: (instr) => { setPrevHtml(html); return { instr }; }, // mémorise pour l'undo
+    onSuccess: (d, instr) => {
       setHtml(d.html);
+      setHistory((h) => [...h, { instruction: instr, summary: d.summary || "Modification appliquée" }]);
       setInstruction("");
-      if (d.applied > 0) toast.success(`Modifié : ${d.summary || "site mis à jour"}`);
-      else { setPrevHtml(null); toast.warning(d.summary || "Aucune modification appliquée — reformule ta demande."); }
+      toast.success(`Modifié : ${d.summary || "site mis à jour"}`);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -171,9 +172,22 @@ function SiteEditor() {
           ) : (
           <div className="p-4 space-y-3 overflow-y-auto">
             <div>
-              <p className="text-sm font-semibold flex items-center gap-1.5"><Sparkles className="h-4 w-4 text-primary" /> Modifier avec l'IA</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Décris ce que tu veux changer, l'IA modifie le site.</p>
+              <p className="text-sm font-semibold flex items-center gap-1.5"><Sparkles className="h-4 w-4 text-primary" /> Discuter avec l'IA</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Dis ce qui ne va pas, l'IA modifie le site. Enchaîne autant de fois que tu veux.</p>
             </div>
+
+            {/* Fil de discussion : modifs déjà appliquées */}
+            {history.length > 0 && (
+              <div className="space-y-1.5">
+                {history.map((h, i) => (
+                  <div key={i} className="rounded-lg border bg-muted/30 p-2 text-xs">
+                    <p className="font-medium text-foreground/90">🗣️ {h.instruction}</p>
+                    <p className="text-muted-foreground mt-0.5">✓ {h.summary}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <Textarea
               value={instruction}
               onChange={(e) => setInstruction(e.target.value)}
