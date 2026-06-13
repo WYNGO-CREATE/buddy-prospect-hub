@@ -144,24 +144,23 @@ export function AppSidebar() {
         </div>
       </SidebarHeader>
       <SidebarContent>
-        {/* ── Sélecteur d'univers : Prospection · Studio · Facturation ── */}
+        {/* ── Sélecteur d'univers (liste verticale, noms complets) ── */}
         <div className="px-2 pt-1 pb-2">
-          <div className="grid grid-cols-3 gap-1 rounded-lg bg-sidebar-accent/40 p-1">
-            <Link to="/tableau" className={cn(
-              "flex items-center justify-center gap-1 rounded-md py-1.5 text-[11px] font-semibold transition",
-              activeWorkspace === "prospection" ? "bg-sidebar text-sidebar-foreground shadow-sm ring-1 ring-sidebar-border" : "text-sidebar-foreground/60 hover:text-sidebar-foreground")}>
-              <Target className="h-3.5 w-3.5" /> Prospect.
-            </Link>
-            <Link to="/studio" className={cn(
-              "flex items-center justify-center gap-1 rounded-md py-1.5 text-[11px] font-semibold transition",
-              activeWorkspace === "studio" ? "bg-sidebar text-sidebar-foreground shadow-sm ring-1 ring-sidebar-border" : "text-sidebar-foreground/60 hover:text-sidebar-foreground")}>
-              <Rocket className="h-3.5 w-3.5" /> Studio
-            </Link>
-            <Link to="/facturation" className={cn(
-              "flex items-center justify-center gap-1 rounded-md py-1.5 text-[11px] font-semibold transition",
-              activeWorkspace === "facturation" ? "bg-sidebar text-sidebar-foreground shadow-sm ring-1 ring-sidebar-border" : "text-sidebar-foreground/60 hover:text-sidebar-foreground")}>
-              <Receipt className="h-3.5 w-3.5" /> Factu.
-            </Link>
+          <p className="px-1 pb-1 text-[10px] uppercase tracking-wider font-semibold text-sidebar-foreground/40">Univers</p>
+          <div className="flex flex-col gap-1 rounded-lg bg-sidebar-accent/30 p-1">
+            {([
+              { ws: "prospection", to: "/tableau", icon: Target, label: "Prospection" },
+              { ws: "studio", to: "/studio", icon: Rocket, label: "Studio" },
+              { ws: "facturation", to: "/facturation", icon: Receipt, label: "Facturation" },
+            ] as const).map((w) => (
+              <Link key={w.ws} to={w.to} className={cn(
+                "flex items-center gap-2 rounded-md px-2.5 py-2 text-sm font-semibold transition",
+                activeWorkspace === w.ws
+                  ? "bg-sidebar text-sidebar-foreground shadow-sm ring-1 ring-sidebar-border"
+                  : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar/50")}>
+                <w.icon className="h-4 w-4 shrink-0" /> {w.label}
+              </Link>
+            ))}
           </div>
         </div>
 
