@@ -129,6 +129,72 @@ export type Database = {
         }
         Relationships: []
       }
+      billing_settings: {
+        Row: {
+          address: string | null
+          bic: string | null
+          city: string | null
+          custom_mentions: string | null
+          default_vat_rate: number
+          email: string | null
+          iban: string | null
+          id: boolean
+          late_penalty: string | null
+          legal_form: string | null
+          legal_name: string | null
+          logo_url: string | null
+          payment_terms_days: number
+          phone: string | null
+          postal_code: string | null
+          siret: string | null
+          updated_at: string
+          vat_number: string | null
+          vat_regime: string
+        }
+        Insert: {
+          address?: string | null
+          bic?: string | null
+          city?: string | null
+          custom_mentions?: string | null
+          default_vat_rate?: number
+          email?: string | null
+          iban?: string | null
+          id?: boolean
+          late_penalty?: string | null
+          legal_form?: string | null
+          legal_name?: string | null
+          logo_url?: string | null
+          payment_terms_days?: number
+          phone?: string | null
+          postal_code?: string | null
+          siret?: string | null
+          updated_at?: string
+          vat_number?: string | null
+          vat_regime?: string
+        }
+        Update: {
+          address?: string | null
+          bic?: string | null
+          city?: string | null
+          custom_mentions?: string | null
+          default_vat_rate?: number
+          email?: string | null
+          iban?: string | null
+          id?: boolean
+          late_penalty?: string | null
+          legal_form?: string | null
+          legal_name?: string | null
+          logo_url?: string | null
+          payment_terms_days?: number
+          phone?: string | null
+          postal_code?: string | null
+          siret?: string | null
+          updated_at?: string
+          vat_number?: string | null
+          vat_regime?: string
+        }
+        Relationships: []
+      }
       call_logs: {
         Row: {
           called_at: string
@@ -268,6 +334,120 @@ export type Database = {
           },
           {
             foreignKeyName: "client_sites_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "prospects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      document_counters: {
+        Row: {
+          last_no: number
+          type: string
+          year: number
+        }
+        Insert: {
+          last_no?: number
+          type: string
+          year: number
+        }
+        Update: {
+          last_no?: number
+          type?: string
+          year?: number
+        }
+        Relationships: []
+      }
+      documents: {
+        Row: {
+          client_address: string | null
+          client_city: string | null
+          client_email: string | null
+          client_name: string | null
+          client_postal_code: string | null
+          client_siret: string | null
+          converted_from: string | null
+          created_at: string
+          due_date: string | null
+          id: string
+          issue_date: string | null
+          lines: Json
+          notes: string | null
+          number: string | null
+          owner_id: string
+          paid_at: string | null
+          prospect_id: string | null
+          sent_at: string | null
+          status: string
+          total_ht: number
+          total_ttc: number
+          total_vat: number
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          client_address?: string | null
+          client_city?: string | null
+          client_email?: string | null
+          client_name?: string | null
+          client_postal_code?: string | null
+          client_siret?: string | null
+          converted_from?: string | null
+          created_at?: string
+          due_date?: string | null
+          id?: string
+          issue_date?: string | null
+          lines?: Json
+          notes?: string | null
+          number?: string | null
+          owner_id: string
+          paid_at?: string | null
+          prospect_id?: string | null
+          sent_at?: string | null
+          status?: string
+          total_ht?: number
+          total_ttc?: number
+          total_vat?: number
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          client_address?: string | null
+          client_city?: string | null
+          client_email?: string | null
+          client_name?: string | null
+          client_postal_code?: string | null
+          client_siret?: string | null
+          converted_from?: string | null
+          created_at?: string
+          due_date?: string | null
+          id?: string
+          issue_date?: string | null
+          lines?: Json
+          notes?: string | null
+          number?: string | null
+          owner_id?: string
+          paid_at?: string | null
+          prospect_id?: string | null
+          sent_at?: string | null
+          status?: string
+          total_ht?: number
+          total_ttc?: number
+          total_vat?: number
+          type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "documents_converted_from_fkey"
+            columns: ["converted_from"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documents_prospect_id_fkey"
             columns: ["prospect_id"]
             isOneToOne: false
             referencedRelation: "prospects"
@@ -1106,6 +1286,7 @@ export type Database = {
           prospects_count: number
         }[]
       }
+      next_document_number: { Args: { p_type: string }; Returns: string }
       prospects_last_contact: {
         Args: never
         Returns: {

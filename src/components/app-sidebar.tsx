@@ -13,6 +13,7 @@ import {
   Headphones,
   Target,
   Rocket,
+  Receipt,
 } from "lucide-react";
 import {
   Sidebar,
@@ -76,9 +77,11 @@ export function AppSidebar() {
 
   type NavItem = { title: string; url: string; icon: typeof Users; badge: number };
 
-  // ── Deux univers distincts : Prospection (Wyngo) et Studio (production) ──
-  const activeWorkspace: "prospection" | "studio" =
-    currentPath.startsWith("/studio") ? "studio" : "prospection";
+  // ── Trois univers : Prospection · Studio (production) · Facturation ──
+  const activeWorkspace: "prospection" | "studio" | "facturation" =
+    currentPath.startsWith("/studio") ? "studio"
+    : currentPath.startsWith("/facturation") ? "facturation"
+    : "prospection";
 
   const prospectionItems: NavItem[] = [
     { title: "Tableau de bord", url: "/tableau", icon: LayoutDashboard, badge: 0 },
@@ -95,7 +98,14 @@ export function AppSidebar() {
     { title: "Production", url: "/studio", icon: Rocket, badge: 0 },
   ];
 
-  const mainItems = activeWorkspace === "studio" ? studioItems : prospectionItems;
+  const facturationItems: NavItem[] = [
+    { title: "Tableau de bord", url: "/facturation", icon: LayoutDashboard, badge: 0 },
+    { title: "Réglages", url: "/facturation/reglages", icon: UserCog, badge: 0 },
+  ];
+
+  const mainItems = activeWorkspace === "studio" ? studioItems
+    : activeWorkspace === "facturation" ? facturationItems
+    : prospectionItems;
 
   // Items "compte", communs aux deux univers
   const accountItems: NavItem[] = [];
@@ -134,36 +144,29 @@ export function AppSidebar() {
         </div>
       </SidebarHeader>
       <SidebarContent>
-        {/* ── Sélecteur d'univers : Prospection ↔ Studio ── */}
+        {/* ── Sélecteur d'univers : Prospection · Studio · Facturation ── */}
         <div className="px-2 pt-1 pb-2">
-          <div className="grid grid-cols-2 gap-1 rounded-lg bg-sidebar-accent/40 p-1">
-            <Link
-              to="/tableau"
-              className={cn(
-                "flex items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-semibold transition",
-                activeWorkspace === "prospection"
-                  ? "bg-sidebar text-sidebar-foreground shadow-sm ring-1 ring-sidebar-border"
-                  : "text-sidebar-foreground/60 hover:text-sidebar-foreground",
-              )}
-            >
-              <Target className="h-3.5 w-3.5" /> Prospection
+          <div className="grid grid-cols-3 gap-1 rounded-lg bg-sidebar-accent/40 p-1">
+            <Link to="/tableau" className={cn(
+              "flex items-center justify-center gap-1 rounded-md py-1.5 text-[11px] font-semibold transition",
+              activeWorkspace === "prospection" ? "bg-sidebar text-sidebar-foreground shadow-sm ring-1 ring-sidebar-border" : "text-sidebar-foreground/60 hover:text-sidebar-foreground")}>
+              <Target className="h-3.5 w-3.5" /> Prospect.
             </Link>
-            <Link
-              to="/studio"
-              className={cn(
-                "flex items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-semibold transition",
-                activeWorkspace === "studio"
-                  ? "bg-sidebar text-sidebar-foreground shadow-sm ring-1 ring-sidebar-border"
-                  : "text-sidebar-foreground/60 hover:text-sidebar-foreground",
-              )}
-            >
+            <Link to="/studio" className={cn(
+              "flex items-center justify-center gap-1 rounded-md py-1.5 text-[11px] font-semibold transition",
+              activeWorkspace === "studio" ? "bg-sidebar text-sidebar-foreground shadow-sm ring-1 ring-sidebar-border" : "text-sidebar-foreground/60 hover:text-sidebar-foreground")}>
               <Rocket className="h-3.5 w-3.5" /> Studio
+            </Link>
+            <Link to="/facturation" className={cn(
+              "flex items-center justify-center gap-1 rounded-md py-1.5 text-[11px] font-semibold transition",
+              activeWorkspace === "facturation" ? "bg-sidebar text-sidebar-foreground shadow-sm ring-1 ring-sidebar-border" : "text-sidebar-foreground/60 hover:text-sidebar-foreground")}>
+              <Receipt className="h-3.5 w-3.5" /> Factu.
             </Link>
           </div>
         </div>
 
         <SidebarGroup>
-          <SidebarGroupLabel>{activeWorkspace === "studio" ? "Studio — Production" : "Prospection"}</SidebarGroupLabel>
+          <SidebarGroupLabel>{activeWorkspace === "studio" ? "Studio — Production" : activeWorkspace === "facturation" ? "Facturation" : "Prospection"}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>{mainItems.map(renderItem)}</SidebarMenu>
           </SidebarGroupContent>

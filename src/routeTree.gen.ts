@@ -25,12 +25,15 @@ import { Route as AuthenticatedPipelineRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedLogsRouteImport } from './routes/_authenticated.logs'
 import { Route as AuthenticatedInboxRouteImport } from './routes/_authenticated.inbox'
 import { Route as AuthenticatedFroidsRouteImport } from './routes/_authenticated.froids'
+import { Route as AuthenticatedFacturationRouteImport } from './routes/_authenticated.facturation'
 import { Route as AuthenticatedEquipeRouteImport } from './routes/_authenticated.equipe'
 import { Route as AuthenticatedChasseRouteImport } from './routes/_authenticated.chasse'
 import { Route as AuthenticatedApolloRouteImport } from './routes/_authenticated.apollo'
 import { Route as AuthenticatedProspectsIndexRouteImport } from './routes/_authenticated.prospects.index'
 import { Route as AuthenticatedProspectsIdRouteImport } from './routes/_authenticated.prospects.$id'
+import { Route as AuthenticatedFacturationReglagesRouteImport } from './routes/_authenticated.facturation.reglages'
 import { Route as AuthenticatedStudioSiteIdRouteImport } from './routes/_authenticated.studio.site.$id'
+import { Route as AuthenticatedFacturationDocumentIdRouteImport } from './routes/_authenticated.facturation.document.$id'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -111,6 +114,12 @@ const AuthenticatedFroidsRoute = AuthenticatedFroidsRouteImport.update({
   path: '/froids',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedFacturationRoute =
+  AuthenticatedFacturationRouteImport.update({
+    id: '/facturation',
+    path: '/facturation',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedEquipeRoute = AuthenticatedEquipeRouteImport.update({
   id: '/equipe',
   path: '/equipe',
@@ -138,11 +147,23 @@ const AuthenticatedProspectsIdRoute =
     path: '/prospects/$id',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedFacturationReglagesRoute =
+  AuthenticatedFacturationReglagesRouteImport.update({
+    id: '/reglages',
+    path: '/reglages',
+    getParentRoute: () => AuthenticatedFacturationRoute,
+  } as any)
 const AuthenticatedStudioSiteIdRoute =
   AuthenticatedStudioSiteIdRouteImport.update({
     id: '/site/$id',
     path: '/site/$id',
     getParentRoute: () => AuthenticatedStudioRoute,
+  } as any)
+const AuthenticatedFacturationDocumentIdRoute =
+  AuthenticatedFacturationDocumentIdRouteImport.update({
+    id: '/document/$id',
+    path: '/document/$id',
+    getParentRoute: () => AuthenticatedFacturationRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -152,6 +173,7 @@ export interface FileRoutesByFullPath {
   '/apollo': typeof AuthenticatedApolloRoute
   '/chasse': typeof AuthenticatedChasseRoute
   '/equipe': typeof AuthenticatedEquipeRoute
+  '/facturation': typeof AuthenticatedFacturationRouteWithChildren
   '/froids': typeof AuthenticatedFroidsRoute
   '/inbox': typeof AuthenticatedInboxRoute
   '/logs': typeof AuthenticatedLogsRoute
@@ -164,8 +186,10 @@ export interface FileRoutesByFullPath {
   '/templates': typeof AuthenticatedTemplatesRoute
   '/workflows': typeof AuthenticatedWorkflowsRoute
   '/auth/gmail-callback': typeof AuthGmailCallbackRoute
+  '/facturation/reglages': typeof AuthenticatedFacturationReglagesRoute
   '/prospects/$id': typeof AuthenticatedProspectsIdRoute
   '/prospects/': typeof AuthenticatedProspectsIndexRoute
+  '/facturation/document/$id': typeof AuthenticatedFacturationDocumentIdRoute
   '/studio/site/$id': typeof AuthenticatedStudioSiteIdRoute
 }
 export interface FileRoutesByTo {
@@ -174,6 +198,7 @@ export interface FileRoutesByTo {
   '/apollo': typeof AuthenticatedApolloRoute
   '/chasse': typeof AuthenticatedChasseRoute
   '/equipe': typeof AuthenticatedEquipeRoute
+  '/facturation': typeof AuthenticatedFacturationRouteWithChildren
   '/froids': typeof AuthenticatedFroidsRoute
   '/inbox': typeof AuthenticatedInboxRoute
   '/logs': typeof AuthenticatedLogsRoute
@@ -187,8 +212,10 @@ export interface FileRoutesByTo {
   '/workflows': typeof AuthenticatedWorkflowsRoute
   '/auth/gmail-callback': typeof AuthGmailCallbackRoute
   '/': typeof AuthenticatedIndexRoute
+  '/facturation/reglages': typeof AuthenticatedFacturationReglagesRoute
   '/prospects/$id': typeof AuthenticatedProspectsIdRoute
   '/prospects': typeof AuthenticatedProspectsIndexRoute
+  '/facturation/document/$id': typeof AuthenticatedFacturationDocumentIdRoute
   '/studio/site/$id': typeof AuthenticatedStudioSiteIdRoute
 }
 export interface FileRoutesById {
@@ -199,6 +226,7 @@ export interface FileRoutesById {
   '/_authenticated/apollo': typeof AuthenticatedApolloRoute
   '/_authenticated/chasse': typeof AuthenticatedChasseRoute
   '/_authenticated/equipe': typeof AuthenticatedEquipeRoute
+  '/_authenticated/facturation': typeof AuthenticatedFacturationRouteWithChildren
   '/_authenticated/froids': typeof AuthenticatedFroidsRoute
   '/_authenticated/inbox': typeof AuthenticatedInboxRoute
   '/_authenticated/logs': typeof AuthenticatedLogsRoute
@@ -212,8 +240,10 @@ export interface FileRoutesById {
   '/_authenticated/workflows': typeof AuthenticatedWorkflowsRoute
   '/auth/gmail-callback': typeof AuthGmailCallbackRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/facturation/reglages': typeof AuthenticatedFacturationReglagesRoute
   '/_authenticated/prospects/$id': typeof AuthenticatedProspectsIdRoute
   '/_authenticated/prospects/': typeof AuthenticatedProspectsIndexRoute
+  '/_authenticated/facturation/document/$id': typeof AuthenticatedFacturationDocumentIdRoute
   '/_authenticated/studio/site/$id': typeof AuthenticatedStudioSiteIdRoute
 }
 export interface FileRouteTypes {
@@ -225,6 +255,7 @@ export interface FileRouteTypes {
     | '/apollo'
     | '/chasse'
     | '/equipe'
+    | '/facturation'
     | '/froids'
     | '/inbox'
     | '/logs'
@@ -237,8 +268,10 @@ export interface FileRouteTypes {
     | '/templates'
     | '/workflows'
     | '/auth/gmail-callback'
+    | '/facturation/reglages'
     | '/prospects/$id'
     | '/prospects/'
+    | '/facturation/document/$id'
     | '/studio/site/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -247,6 +280,7 @@ export interface FileRouteTypes {
     | '/apollo'
     | '/chasse'
     | '/equipe'
+    | '/facturation'
     | '/froids'
     | '/inbox'
     | '/logs'
@@ -260,8 +294,10 @@ export interface FileRouteTypes {
     | '/workflows'
     | '/auth/gmail-callback'
     | '/'
+    | '/facturation/reglages'
     | '/prospects/$id'
     | '/prospects'
+    | '/facturation/document/$id'
     | '/studio/site/$id'
   id:
     | '__root__'
@@ -271,6 +307,7 @@ export interface FileRouteTypes {
     | '/_authenticated/apollo'
     | '/_authenticated/chasse'
     | '/_authenticated/equipe'
+    | '/_authenticated/facturation'
     | '/_authenticated/froids'
     | '/_authenticated/inbox'
     | '/_authenticated/logs'
@@ -284,8 +321,10 @@ export interface FileRouteTypes {
     | '/_authenticated/workflows'
     | '/auth/gmail-callback'
     | '/_authenticated/'
+    | '/_authenticated/facturation/reglages'
     | '/_authenticated/prospects/$id'
     | '/_authenticated/prospects/'
+    | '/_authenticated/facturation/document/$id'
     | '/_authenticated/studio/site/$id'
   fileRoutesById: FileRoutesById
 }
@@ -410,6 +449,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedFroidsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/facturation': {
+      id: '/_authenticated/facturation'
+      path: '/facturation'
+      fullPath: '/facturation'
+      preLoaderRoute: typeof AuthenticatedFacturationRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/equipe': {
       id: '/_authenticated/equipe'
       path: '/equipe'
@@ -445,6 +491,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProspectsIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/facturation/reglages': {
+      id: '/_authenticated/facturation/reglages'
+      path: '/reglages'
+      fullPath: '/facturation/reglages'
+      preLoaderRoute: typeof AuthenticatedFacturationReglagesRouteImport
+      parentRoute: typeof AuthenticatedFacturationRoute
+    }
     '/_authenticated/studio/site/$id': {
       id: '/_authenticated/studio/site/$id'
       path: '/site/$id'
@@ -452,8 +505,33 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedStudioSiteIdRouteImport
       parentRoute: typeof AuthenticatedStudioRoute
     }
+    '/_authenticated/facturation/document/$id': {
+      id: '/_authenticated/facturation/document/$id'
+      path: '/document/$id'
+      fullPath: '/facturation/document/$id'
+      preLoaderRoute: typeof AuthenticatedFacturationDocumentIdRouteImport
+      parentRoute: typeof AuthenticatedFacturationRoute
+    }
   }
 }
+
+interface AuthenticatedFacturationRouteChildren {
+  AuthenticatedFacturationReglagesRoute: typeof AuthenticatedFacturationReglagesRoute
+  AuthenticatedFacturationDocumentIdRoute: typeof AuthenticatedFacturationDocumentIdRoute
+}
+
+const AuthenticatedFacturationRouteChildren: AuthenticatedFacturationRouteChildren =
+  {
+    AuthenticatedFacturationReglagesRoute:
+      AuthenticatedFacturationReglagesRoute,
+    AuthenticatedFacturationDocumentIdRoute:
+      AuthenticatedFacturationDocumentIdRoute,
+  }
+
+const AuthenticatedFacturationRouteWithChildren =
+  AuthenticatedFacturationRoute._addFileChildren(
+    AuthenticatedFacturationRouteChildren,
+  )
 
 interface AuthenticatedStudioRouteChildren {
   AuthenticatedStudioSiteIdRoute: typeof AuthenticatedStudioSiteIdRoute
@@ -470,6 +548,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedApolloRoute: typeof AuthenticatedApolloRoute
   AuthenticatedChasseRoute: typeof AuthenticatedChasseRoute
   AuthenticatedEquipeRoute: typeof AuthenticatedEquipeRoute
+  AuthenticatedFacturationRoute: typeof AuthenticatedFacturationRouteWithChildren
   AuthenticatedFroidsRoute: typeof AuthenticatedFroidsRoute
   AuthenticatedInboxRoute: typeof AuthenticatedInboxRoute
   AuthenticatedLogsRoute: typeof AuthenticatedLogsRoute
@@ -490,6 +569,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedApolloRoute: AuthenticatedApolloRoute,
   AuthenticatedChasseRoute: AuthenticatedChasseRoute,
   AuthenticatedEquipeRoute: AuthenticatedEquipeRoute,
+  AuthenticatedFacturationRoute: AuthenticatedFacturationRouteWithChildren,
   AuthenticatedFroidsRoute: AuthenticatedFroidsRoute,
   AuthenticatedInboxRoute: AuthenticatedInboxRoute,
   AuthenticatedLogsRoute: AuthenticatedLogsRoute,
