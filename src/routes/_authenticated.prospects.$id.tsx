@@ -22,6 +22,7 @@ import { ProspectEmailCard } from "@/components/prospect-email-card";
 import { CallDebrief } from "@/components/call-debrief";
 import { CallPrep } from "@/components/call-prep";
 import { PostcardSender } from "@/components/postcard-sender";
+import { ProspectEnrichButton } from "@/components/prospect-enrich-button";
 import { findTradeByNaf } from "@/lib/trades-catalog";
 import { Briefcase } from "lucide-react";
 import { PROSPECT_STATUSES, STATUS_LABELS, STATUS_VARIANTS, EVENT_LABELS, type ProspectStatus } from "@/lib/crm";
@@ -293,6 +294,9 @@ function ProspectDetail() {
           </div>
         </div>
         <div className="flex gap-2 items-center">
+          {/* Enrichir : récupère Google + site + email + brief (utile pour un
+              prospect ajouté à la main qui arrive "vide"). */}
+          <ProspectEnrichButton prospectId={prospect.id} company={prospect.company} location={(prospect as { location?: string | null }).location} />
           {/* Le Mode appel est désormais centralisé sur la page "Scripts d'appel".
               Voir CallLauncherForProspect — flux : sélectionne prospect → démarrer.
               On retire le bouton de la fiche prospect pour cohérence avec la

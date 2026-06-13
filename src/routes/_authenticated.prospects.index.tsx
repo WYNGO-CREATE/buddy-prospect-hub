@@ -45,6 +45,7 @@ const prospectSchema = z.object({
   first_name: z.string().trim().min(1, "Prénom requis").max(80),
   last_name: z.string().trim().min(1, "Nom requis").max(80),
   company: z.string().trim().max(120).optional().or(z.literal("")),
+  location: z.string().trim().max(160).optional().or(z.literal("")),
   email: z.string().trim().email("Email invalide").max(255).optional().or(z.literal("")),
   phone: z.string().trim().max(40).optional().or(z.literal("")),
   website: z.string().trim().max(255).optional().or(z.literal("")),
@@ -268,15 +269,26 @@ function ProspectsPage() {
 
   const create = useMutation({
     mutationFn: async (payload: any) => {
-      const { error } = await supabase.from("prospects").insert(payload);
+      const { data, error } = await supabase.from("prospects").insert(payload).select("id, company, location").single();
       if (error) throw error;
+      return data as { id: string; company: string | null; location: string | null };
     },
-    onSuccess: () => {
-      toast.success("Prospect ajouté");
+    onSuccess: (created) => {
       qc.invalidateQueries({ queryKey: ["prospects"] });
       setOpen(false);
       setPendingPayload(null);
       setDuplicates([]);
+      // Enrichissement automatique (Places + site + email + brief) si on a
+      // de quoi chercher (société + ville) — comme la chasse.
+      if (created.company && created.location) {
+        toast.success("Prospect ajouté — enrichissement en cours… ✨");
+        supabase.functions.invoke("enrich-prospect", { body: { prospect_id: created.id } })
+          .then(() => qc.invalidateQueries({ queryKey: ["prospect", created.id] }))
+          .catch(() => { /* silencieux — bouton Enrichir dispo sur la fiche */ });
+      } else {
+        toast.success("Prospect ajouté");
+      }
+      navigate({ to: "/prospects/$id", params: { id: created.id } });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -399,7 +411,11 @@ function ProspectsPage() {
                   <div className="space-y-2"><Label htmlFor="first_name">Prénom *</Label><Input id="first_name" name="first_name" required /></div>
                   <div className="space-y-2"><Label htmlFor="last_name">Nom *</Label><Input id="last_name" name="last_name" required /></div>
                 </div>
-                <div className="space-y-2"><Label htmlFor="company">Société</Label><Input id="company" name="company" /></div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2"><Label htmlFor="company">Société</Label><Input id="company" name="company" /></div>
+                  <div className="space-y-2"><Label htmlFor="location">Ville</Label><Input id="location" name="location" placeholder="Lyon, Toulouse…" /></div>
+                </div>
+                <p className="text-[11px] text-muted-foreground -mt-1">💡 Renseigne <b>Société + Ville</b> : Wyngo enrichira tout seul (téléphone, site, note Google, aperçu) comme dans la chasse.</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2"><Label htmlFor="email">Email</Label><Input id="email" name="email" type="email" value={liveEmail} onChange={(e) => setLiveEmail(e.target.value)} /></div>
                   <div className="space-y-2"><Label htmlFor="phone">Téléphone</Label><Input id="phone" name="phone" value={livePhone} onChange={(e) => setLivePhone(e.target.value)} /></div>
