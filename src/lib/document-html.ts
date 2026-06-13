@@ -60,7 +60,7 @@ export function renderDocumentHtml(doc: RenderDoc, s: RenderSettings): string {
   const ttc = ht + vat;
 
   const clientSiren = sirenFrom(doc.client_siret);
-  const penalty = esc(s.late_penalty || "Pénalités de retard : 3 fois le taux d'intérêt légal.");
+  const penalty = esc(s.late_penalty || "En cas de retard de paiement, des pénalités de retard sont applicables au taux de 3 fois le taux d'intérêt légal en vigueur, exigibles le jour suivant la date d'échéance, sans qu'un rappel soit nécessaire.");
   const indemnite = "Indemnité forfaitaire de 40 € pour frais de recouvrement en cas de retard de paiement.";
 
   const lineRows = doc.lines.map((l) => {

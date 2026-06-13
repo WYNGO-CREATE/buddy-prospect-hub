@@ -33,7 +33,7 @@ type Settings = {
 const EMPTY: Settings = {
   legal_name: "", legal_form: "", address: "", postal_code: "", city: "", siret: "", vat_number: "",
   vat_regime: "franchise", default_vat_rate: 20, iban: "", bic: "", payment_terms_days: 30,
-  late_penalty: "Pénalités de retard : 3 fois le taux d'intérêt légal en cas de retard de paiement.",
+  late_penalty: "En cas de retard de paiement, des pénalités de retard sont applicables au taux de 3 fois le taux d'intérêt légal en vigueur, exigibles le jour suivant la date d'échéance, sans qu'un rappel soit nécessaire.",
   custom_mentions: "", email: "", phone: "", is_ei: true, rne_registered: true,
 };
 
