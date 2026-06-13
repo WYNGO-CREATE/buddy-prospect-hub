@@ -21,6 +21,7 @@ import { ProspectBriefingCard } from "@/components/prospect-briefing-card";
 import { ProspectEmailCard } from "@/components/prospect-email-card";
 import { CallDebrief } from "@/components/call-debrief";
 import { CallPrep } from "@/components/call-prep";
+import { PostcardSender } from "@/components/postcard-sender";
 import { findTradeByNaf } from "@/lib/trades-catalog";
 import { Briefcase } from "lucide-react";
 import { PROSPECT_STATUSES, STATUS_LABELS, STATUS_VARIANTS, EVENT_LABELS, type ProspectStatus } from "@/lib/crm";
@@ -419,6 +420,15 @@ function ProspectDetail() {
 
       {/* ─── Préparation d'appel IA (brief + accroche taillée) ─── */}
       <CallPrep prospectId={prospect.id} />
+
+      {/* ─── Carte postale physique (Merci Facteur / La Poste) ─── */}
+      <PostcardSender
+        prospectId={prospect.id}
+        company={prospect.company}
+        firstName={prospect.first_name}
+        location={(prospect as { location?: string | null }).location}
+        phone={prospect.phone}
+      />
 
       {/* ═══ NAV RAPIDE Activité ═══
           Raccourcis vers les 4 onglets en bas (Discussion / Appels / Relances /

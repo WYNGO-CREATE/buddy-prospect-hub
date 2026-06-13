@@ -604,6 +604,74 @@ export type Database = {
           },
         ]
       }
+      prospect_postcards: {
+        Row: {
+          address_line: string | null
+          city: string | null
+          country: string
+          created_at: string
+          error: string | null
+          id: string
+          message: string | null
+          owner_id: string
+          postal_code: string | null
+          preview_url: string | null
+          prospect_id: string
+          provider: string
+          provider_id: string | null
+          recipient_name: string | null
+          recto_image_url: string | null
+          sent_at: string | null
+          status: string
+        }
+        Insert: {
+          address_line?: string | null
+          city?: string | null
+          country?: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          message?: string | null
+          owner_id: string
+          postal_code?: string | null
+          preview_url?: string | null
+          prospect_id: string
+          provider?: string
+          provider_id?: string | null
+          recipient_name?: string | null
+          recto_image_url?: string | null
+          sent_at?: string | null
+          status?: string
+        }
+        Update: {
+          address_line?: string | null
+          city?: string | null
+          country?: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          message?: string | null
+          owner_id?: string
+          postal_code?: string | null
+          preview_url?: string | null
+          prospect_id?: string
+          provider?: string
+          provider_id?: string | null
+          recipient_name?: string | null
+          recto_image_url?: string | null
+          sent_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prospect_postcards_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "prospects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       prospect_previews: {
         Row: {
           expires_at: string
